@@ -1,0 +1,2115 @@
+<!doctype html>
+<html lang="kk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Оғыз мұрасы 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@500;700&family=Noto+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --gold:#e8c374; --gold2:#b8862f; --teal:#5fd4d0; --ink:#f4ead7; --ink2:#c9bda4;
+  --glass:rgba(16,14,22,.72); --glass2:rgba(30,24,30,.86); --line:rgba(232,195,116,.35);
+  --bg:#07070c;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font-family:'Noto Sans',system-ui,sans-serif}
+canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.labels{position:fixed!important;inset:0;pointer-events:none}
+button{font:inherit;color:inherit;cursor:pointer}
+.serif{font-family:'Noto Serif',Georgia,serif}
+
+/* ---------- map labels / hotspots ---------- */
+.mlabel{pointer-events:auto;display:flex;align-items:center;gap:6px;transform:translateY(-34px);cursor:pointer;white-space:nowrap;user-select:none}
+.mlabel b{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3cf,var(--gold) 45%,var(--gold2));color:#2a1a05;font-size:12px;box-shadow:0 0 14px rgba(232,195,116,.8)}
+.mlabel.teal b{background:radial-gradient(circle at 35% 30%,#e8ffff,var(--teal) 45%,#1d8c89);box-shadow:0 0 14px rgba(95,212,208,.8)}
+.mlabel span{font-size:13px;font-weight:600;padding:3px 9px;border-radius:12px;background:rgba(10,8,14,.72);border:1px solid var(--line);text-shadow:0 1px 2px #000;transition:opacity .3s}
+.mlabel.far span{opacity:0;pointer-events:none}
+.mlabel:hover span,.mlabel.active span{opacity:1;background:rgba(60,40,10,.9);border-color:var(--gold)}
+.mlabel.active b{transform:scale(1.25)}
+.geo{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:rgba(200,225,255,.55);font-style:italic;text-shadow:0 1px 3px #000;white-space:nowrap;pointer-events:none}
+.geo.city{font-size:11px;letter-spacing:.04em;text-transform:none;color:rgba(255,255,255,.45);font-style:normal}
+.geo.city:before{content:'●';font-size:7px;margin-right:4px;vertical-align:2px}
+.zone{font-family:'Noto Serif',serif;font-size:15px;color:var(--gold);padding:4px 12px;border:1px solid var(--line);border-radius:14px;background:rgba(10,8,14,.6);pointer-events:none;white-space:nowrap}
+.hs{pointer-events:auto;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;cursor:pointer;background:rgba(20,14,6,.75);border:2px solid var(--gold);color:var(--gold);font:700 15px 'Noto Serif',serif;position:relative;transition:transform .2s}
+.hs:before{content:'';position:absolute;inset:-7px;border-radius:50%;border:2px solid var(--gold);opacity:.6;animation:ping 2s infinite}
+.hs:hover{transform:scale(1.2);background:var(--gold);color:#241602}
+.hs .tip{position:absolute;left:36px;top:50%;transform:translateY(-50%);white-space:nowrap;font:600 12px 'Noto Sans';background:rgba(10,8,14,.85);border:1px solid var(--line);color:var(--ink);padding:3px 8px;border-radius:10px;opacity:0;pointer-events:none;transition:.2s}
+.hs:hover .tip{opacity:1}
+.hs.seen{border-color:var(--teal);color:var(--teal)}
+.hs.seen:before{border-color:var(--teal);animation:none;opacity:0}
+@keyframes ping{0%{transform:scale(.8);opacity:.8}100%{transform:scale(1.6);opacity:0}}
+
+/* ---------- top info panel ---------- */
+#panel{position:fixed;top:14px;left:50%;transform:translateX(-50%);width:min(820px,calc(100vw - 32px));background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.5);z-index:20;transition:opacity .4s,transform .4s;overflow:hidden}
+#panel.hidden{opacity:0;transform:translate(-50%,-30px);pointer-events:none}
+#panel .head{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;user-select:none}
+#panel .num{flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font:700 16px 'Noto Serif',serif;color:#241602;background:radial-gradient(circle at 35% 30%,#fff3cf,var(--gold) 45%,var(--gold2))}
+#panel .num.teal{background:radial-gradient(circle at 35% 30%,#e8ffff,var(--teal) 45%,#1d8c89)}
+#panel h2{margin:0;font:700 clamp(16px,2.2vw,21px)/1.25 'Noto Serif',serif;color:var(--gold)}
+#panel .sub{font-size:12.5px;color:var(--ink2);margin-top:2px}
+#panel .chev{margin-left:auto;flex:none;width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:none;display:grid;place-items:center;transition:transform .3s}
+#panel.collapsed .chev{transform:rotate(180deg)}
+#panel .body{max-height:min(30vh,360px);overflow:auto;padding:0 18px 14px;transition:max-height .45s ease,padding .45s}
+#panel.collapsed .body{max-height:0;padding-bottom:0;overflow:hidden}
+#panel p{margin:0 0 9px;font-size:14.5px;line-height:1.6;color:#ece1cb}
+#panel ul.facts{display:flex;flex-wrap:wrap;gap:7px;list-style:none;padding:0;margin:6px 0 10px}
+#panel ul.facts li{font-size:12.5px;padding:5px 10px;border-radius:12px;background:rgba(232,195,116,.1);border:1px solid rgba(232,195,116,.28)}
+#panel ol.src{font-size:12.5px;color:var(--ink2);padding-left:20px;margin:4px 0 8px;line-height:1.55}
+#panel .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.btn{border:1px solid var(--line);background:rgba(232,195,116,.1);padding:8px 14px;border-radius:22px;font-size:13.5px;font-weight:600;display:inline-flex;gap:7px;align-items:center;transition:.2s}
+.btn:hover{background:rgba(232,195,116,.25);border-color:var(--gold)}
+.btn.primary{background:linear-gradient(135deg,#f3d58f,#c18f35);color:#221502;border-color:transparent}
+.btn.primary:hover{filter:brightness(1.1)}
+.btn.on{background:rgba(95,212,208,.2);border-color:var(--teal)}
+.authors{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px;margin:4px 0 10px}
+.authors span:nth-child(odd){color:var(--ink2)}
+
+/* ---------- toolbar ---------- */
+#tools{position:fixed;right:14px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px;z-index:21}
+#tools button{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(10px);font-size:19px;display:grid;place-items:center;position:relative;transition:.2s}
+#tools button:hover{border-color:var(--gold);transform:scale(1.08)}
+#tools button.on{background:rgba(232,195,116,.28);border-color:var(--gold)}
+#tools button[data-tip]:hover:after{content:attr(data-tip);position:absolute;right:52px;white-space:nowrap;font-size:12.5px;background:rgba(10,8,14,.9);border:1px solid var(--line);padding:4px 10px;border-radius:10px}
+
+/* ---------- site controls (bottom-left) ---------- */
+#siteBar{position:fixed;left:14px;bottom:86px;display:flex;flex-wrap:wrap;gap:8px;z-index:21;max-width:calc(100vw - 90px);transition:opacity .3s}
+#siteBar.hidden{opacity:0;pointer-events:none}
+#siteBar .btn{background:var(--glass);backdrop-filter:blur(10px)}
+
+/* ---------- bottom nav ---------- */
+#nav{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;z-index:21;width:min(980px,calc(100vw - 24px));background:var(--glass);backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:30px;padding:6px}
+#nav .arrow{flex:none;width:44px;height:44px;border-radius:50%;border:none;background:linear-gradient(135deg,#f3d58f,#c18f35);color:#221502;font-size:20px;font-weight:700}
+#nav .arrow:disabled{opacity:.35;cursor:default}
+#chips{flex:1;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;scroll-behavior:smooth;padding:2px}
+#chips::-webkit-scrollbar{display:none}
+#chips button{flex:none;border:1px solid transparent;background:none;border-radius:20px;padding:7px 12px;font-size:12.5px;color:var(--ink2);white-space:nowrap;transition:.2s}
+#chips button:hover{color:var(--ink);border-color:var(--line)}
+#chips button.active{background:rgba(232,195,116,.2);border-color:var(--gold);color:var(--gold);font-weight:700}
+#chips button i{font-style:normal;opacity:.6;margin-right:4px}
+#progress{position:fixed;left:0;bottom:0;height:3px;background:linear-gradient(90deg,var(--gold2),var(--gold));z-index:22;transition:width .6s}
+
+/* ---------- popup card ---------- */
+#card{position:fixed;right:70px;top:50%;transform:translateY(-50%) translateX(20px);width:min(380px,calc(100vw - 32px));background:var(--glass2);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:18px;z-index:25;opacity:0;pointer-events:none;transition:.35s;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+#card.show{opacity:1;pointer-events:auto;transform:translateY(-50%)}
+#card img{width:100%;max-height:230px;object-fit:cover;display:block;cursor:zoom-in}
+#card .in{padding:14px 16px 16px}
+#card h3{margin:0 0 6px;font:700 18px 'Noto Serif',serif;color:var(--gold)}
+#card p{margin:0 0 12px;font-size:14px;line-height:1.6}
+#card .x{position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,.6);font-size:16px;z-index:2}
+#card canvas.tamga{display:block;margin:0 auto 10px;background:rgba(255,255,255,.04);border-radius:10px}
+
+/* ---------- gallery / lightbox ---------- */
+#gallery{position:fixed;inset:0;background:rgba(5,4,8,.92);z-index:40;display:none;flex-direction:column;padding:20px}
+#gallery.show{display:flex}
+#gallery header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+#gallery h3{margin:0;font:700 20px 'Noto Serif',serif;color:var(--gold)}
+#gallery .grid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;align-content:start}
+#gallery figure{margin:0;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;overflow:hidden;cursor:zoom-in}
+#gallery figure img{width:100%;height:180px;object-fit:cover;display:block}
+#gallery figcaption{font-size:12px;padding:7px 10px;color:var(--ink2)}
+#gallery figcaption a{color:var(--teal)}
+#gallery .note{font-size:13px;color:var(--ink2)}
+#lightbox{position:fixed;inset:0;background:rgba(0,0,0,.95);z-index:50;display:none;place-items:center;cursor:zoom-out}
+#lightbox.show{display:grid}
+#lightbox img{max-width:94vw;max-height:88vh;border-radius:8px;box-shadow:0 0 60px rgba(0,0,0,.8)}
+#lightbox div{position:absolute;bottom:20px;left:0;right:0;text-align:center;color:var(--ink2);font-size:14px}
+
+/* ---------- intro ---------- */
+#intro{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 40%,rgba(40,28,10,.55),rgba(5,4,8,.94) 70%);transition:opacity 1.2s}
+#intro.gone{opacity:0;pointer-events:none}
+#intro .box{text-align:center;max-width:860px;padding:24px}
+#intro .orn{width:min(420px,80vw);height:40px;margin:0 auto 18px;display:block}
+#intro h1{font:700 clamp(24px,4.2vw,44px)/1.22 'Noto Serif',serif;margin:0 0 14px;background:linear-gradient(180deg,#fff2cc,#e8c374 50%,#a8772a);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 0 40px rgba(232,195,116,.15)}
+#intro .lead{color:var(--ink2);font-size:clamp(14px,1.6vw,17px);margin:0 0 22px}
+#intro .who{display:inline-grid;grid-template-columns:auto auto;gap:6px 14px;text-align:left;font-size:15px;margin-bottom:28px;padding:14px 20px;border:1px solid var(--line);border-radius:14px;background:rgba(0,0,0,.35)}
+#intro .who span:nth-child(odd){color:var(--ink2)}
+#intro .start{font-size:18px;padding:14px 34px}
+#intro .hint{margin-top:16px;font-size:12.5px;color:rgba(201,189,164,.7)}
+#loading{margin-top:12px;font-size:13px;color:var(--ink2)}
+
+/* ---------- narration indicator ---------- */
+#speak{position:fixed;left:14px;top:14px;z-index:22;display:none;align-items:center;gap:8px;background:var(--glass);border:1px solid var(--line);border-radius:22px;padding:6px 8px 6px 12px;font-size:12.5px}
+#speak.show{display:flex}
+#speak .bars{display:flex;gap:2px;align-items:flex-end;height:16px}
+#speak .bars i{width:3px;background:var(--gold);animation:bar 1s infinite ease-in-out}
+#speak .bars i:nth-child(2){animation-delay:.2s}#speak .bars i:nth-child(3){animation-delay:.4s}#speak .bars i:nth-child(4){animation-delay:.1s}
+#speak button{border:none;background:rgba(255,255,255,.1);border-radius:50%;width:26px;height:26px}
+@keyframes bar{0%,100%{height:4px}50%{height:16px}}
+
+#fade{position:fixed;inset:0;background:#07070c;z-index:30;opacity:0;pointer-events:none;transition:opacity .55s}
+#fade.on{opacity:1}
+#help{position:fixed;inset:0;z-index:45;background:rgba(5,4,8,.85);display:none;place-items:center}
+#help.show{display:grid}
+#help .box{max-width:560px;width:calc(100vw - 32px);background:var(--glass2);border:1px solid var(--line);border-radius:18px;padding:22px}
+#help h3{margin:0 0 12px;font:700 20px 'Noto Serif',serif;color:var(--gold)}
+#help table{width:100%;font-size:14px;border-collapse:collapse}
+#help td{padding:7px 4px;border-bottom:1px solid rgba(232,195,116,.12)}
+#help td:first-child{color:var(--gold);white-space:nowrap;padding-right:14px}
+
+#hand{position:fixed;left:14px;bottom:150px;z-index:23;width:200px;border-radius:12px;overflow:hidden;border:1px solid var(--line);display:none;background:#000}
+#hand.show{display:block}
+#hand video,#hand canvas{width:100%;display:block;transform:scaleX(-1)}
+#hand canvas{position:absolute;inset:0;height:100%}
+#hand div{position:absolute;left:0;right:0;bottom:0;font-size:11px;padding:4px 6px;background:rgba(0,0,0,.6)}
+#cursor{position:fixed;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;border:3px solid var(--teal);z-index:70;pointer-events:none;display:none;box-shadow:0 0 16px var(--teal);transition:background .15s}
+#cursor.pinch{background:var(--teal)}
+#toast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:80;background:var(--glass2);border:1px solid var(--line);padding:12px 18px;border-radius:14px;font-size:14px;opacity:0;pointer-events:none;transition:.3s;max-width:90vw;text-align:center}
+#toast.show{opacity:1}
+
+@media (max-width:700px){
+  #panel{top:8px}
+  #panel .body{max-height:30vh}
+  #panel p{font-size:13.5px}
+  #tools{top:auto;bottom:80px;transform:none;right:8px}
+  #tools button{width:38px;height:38px;font-size:16px}
+  #siteBar{bottom:80px;left:8px;max-width:calc(100vw - 64px)}
+  #siteBar .btn{padding:6px 10px;font-size:12px}
+  #card{right:16px;top:auto;bottom:140px;transform:translateY(20px)}
+  #card.show{transform:none}
+  #card img{max-height:150px}
+  #hand{width:130px;bottom:200px}
+}
+</style>
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="intro">
+  <div class="box">
+    <svg class="orn" viewBox="0 0 420 40" fill="none" stroke="#e8c374" stroke-width="2">
+      <path d="M0 20h150M270 20h150"/>
+      <path d="M210 4c-10 0-16 8-16 16s6 12 12 12 8-4 8-8-3-6-6-6M210 4c10 0 16 8 16 16s-6 12-12 12-8-4-8-8 3-6 6-6"/>
+      <path d="M190 20c-8-10-20-12-26-4 6 2 8 8 4 12-4-6-12-6-14-2M230 20c8-10 20-12 26-4-6 2-8 8-4 12 4-6 12-6 14-2"/>
+      <circle cx="150" cy="20" r="3" fill="#e8c374"/><circle cx="270" cy="20" r="3" fill="#e8c374"/>
+    </svg>
+    <h1 id="introTitle"></h1>
+    <p class="lead" id="introLead"></p>
+    <div class="who"><span>Жоба авторы:</span><b id="introAuthor"></b><span>Жетекшісі:</span><b id="introSup"></b></div><br>
+    <button class="btn primary start" id="startBtn" disabled>▶ Саяхатты бастау</button>
+    <div id="loading">3D әлем жүктелуде…</div>
+    <div class="hint">🎧 Құлаққапты киіңіз: қазақша дауыс пен қобыз әуені ойнайды</div>
+  </div>
+</div>
+
+<div id="panel" class="hidden">
+  <div class="head" id="panelHead">
+    <div class="num" id="pNum">★</div>
+    <div><h2 id="pTitle"></h2><div class="sub" id="pSub"></div></div>
+    <button class="chev" aria-label="Жию">▲</button>
+  </div>
+  <div class="body" id="pBody"></div>
+</div>
+
+<div id="tools">
+  <button id="tMusic" data-tip="Қобыз әуені (M)">🎻</button>
+  <button id="tVoice" data-tip="Қазақша дауыс">🔊</button>
+  <button id="tHand" data-tip="Қолмен басқару (камера)">🖐</button>
+  <button id="tRotate" data-tip="Автоматты айналу">🔄</button>
+  <button id="tReset" data-tip="Көріністі қайтару">🎯</button>
+  <button id="tFull" data-tip="Толық экран">⛶</button>
+  <button id="tHelp" data-tip="Көмек">?</button>
+</div>
+
+<div id="siteBar" class="hidden"></div>
+
+<div id="nav">
+  <button class="arrow" id="prev" aria-label="Алдыңғы">‹</button>
+  <div id="chips"></div>
+  <button class="arrow" id="next" aria-label="Келесі">›</button>
+</div>
+<div id="progress"></div>
+
+<div id="card"><button class="x" id="cardX">✕</button><div id="cardImg"></div><div class="in"><h3 id="cardTitle"></h3><div id="cardExtra"></div><p id="cardText"></p><div class="acts" id="cardActs"></div></div></div>
+
+<div id="gallery"><header><h3 id="galTitle">Фотолар</h3><span class="note" id="galNote"></span><button class="btn" style="margin-left:auto" id="galX">✕ Жабу</button></header><div class="grid" id="galGrid"></div></div>
+<div id="lightbox"><img alt=""><div></div></div>
+
+<div id="speak"><div class="bars"><i></i><i></i><i></i><i></i></div><span>Дауыс</span><button id="speakStop" aria-label="Тоқтату">■</button></div>
+<div id="fade"></div>
+<div id="help"><div class="box"><h3>Басқару</h3><table>
+<tr><td>Тінтуір сол жақ батырмасы</td><td>Сүйреп айналдыру</td></tr>
+<tr><td>Тінтуір оң жақ / 2 саусақ</td><td>Жылжыту</td></tr>
+<tr><td>Дөңгелек / шымшу</td><td>Үлкейту, кішірейту</td></tr>
+<tr><td>Алтын «i» белгілері</td><td>Нысан бөлігі туралы мәлімет</td></tr>
+<tr><td>← →</td><td>Слайдтарды ауыстыру</td></tr>
+<tr><td>M · V</td><td>Әуен · Дауыс</td></tr>
+<tr><td>🖐 Қолмен басқару</td><td>Алақанды жылжыту – айналдыру; сұқ саусақ пен бас бармақты қысу – басу; қысып тұрып жоғары/төмен – үлкейту</td></tr>
+</table><br><button class="btn primary" id="helpX">Түсінікті</button></div></div>
+<div id="hand"><video playsinline muted></video><canvas></canvas><div>🖐 Қол бақылауда</div></div>
+<div id="cursor"></div>
+<div id="toast"></div>
+
+<script>window.CONTENT = {"project": {"title": "Түркі мемлекетінің қалыптасу тарихын зерттеудегі жаңа археологиялық деректер", "subtitle": "Интерактивті виртуалды музей · Оғыз мемлекеті (IX–XI ғғ.), Сыр бойы мен Маңғыстау ескерткіштері", "author": "Амин Көркем Абайқызы", "supervisor": "Тлекбаева Марина Жанибекқызы"}, "slides": [{"id": "intro", "kind": "intro", "title": "Виртуалды музейге қош келдіңіз", "sub": "Жоба авторы: Амин Көркем Абайқызы · Жетекшісі: Тлекбаева Марина Жанибекқызы", "text": ["Бұл – «Түркі мемлекетінің қалыптасу тарихын зерттеудегі жаңа археологиялық деректер» тақырыбына арналған интерактивті үш өлшемді саяхат.", "Біз Қазақстанның тірі картасының үстімен ұшып, Оғыз мемлекетінің астанасы Жанкентке, Сыр бойының көне қалаларына және Маңғыстаудың тас қорымдарына барамыз. Әр нысанның ішіне кіріп, қалпына келтірілген көне қаланы көріп, оның бөліктерін басып, мәлімет ала аласыз."], "facts": ["Тінтуірмен сүйреп – айналдыру", "Дөңгелекпен – үлкейту/кішірейту", "Алтын белгілерді басып – мәлімет алу", "← → пернелері – слайдтарды ауыстыру"], "narration": "Құрметті көрермен! «Түркі мемлекетінің қалыптасу тарихын зерттеудегі жаңа археологиялық деректер» атты виртуалды музей жобасына қош келдіңіз. Жоба авторы – Амин Көркем Абайқызы. Жетекшісі – Тлекбаева Марина Жанибекқызы. Біз бірге Қазақстан картасының үстімен ұшып, Оғыз мемлекетінің астанасы Жанкентке, Сыр бойының көне қалаларына және Маңғыстаудың тас қорымдарына саяхат жасаймыз."}, {"id": "map", "kind": "map", "title": "Қазақстан картасы: Оғыз мемлекеті және Сыр бойы қалалары", "sub": "IX–XI ғасырлар · Сырдария, Арал өңірі, Каспий маңы", "text": ["IX–XI ғасырларда Сырдарияның орта және төменгі ағысы, Арал өңірі мен Каспий маңы далаларында Оғыз мемлекеті – оғыз жабғулығы өмір сүрді. Мемлекетті жабғу басқарды, астанасы – Сырдария жағасындағы Жанкент қаласы болды.", "Оғыздар көшпелі мал шаруашылығын отырықшы егіншілікпен, қолөнермен және керуен саудасымен ұштастырды. Олар туралы мәліметтер Ибн Фадлан (922 ж.), әл-Истахри, Ибн Хаукал, «Худуд әл-Алам» және Махмұд Қашқари еңбектерінде сақталған. Соңғы жылдардағы археологиялық қазбалар бұл жазба деректерді нақтылап, жаңа фактілермен толықтыруда.", "Картада 12 нысан белгіленген. Алтын белгілер – Сыр бойындағы қалалар, көгілдір белгілер – Маңғыстаудағы қорымдар. Алтын сызықтар – керуен жолдары."], "facts": ["Кезеңі: IX–XI ғғ.", "Астанасы: Жанкент (Янгикент)", "Билеушісі: жабғу", "Махмұд Қашқари оғыздардың 22 руын және олардың таңбаларын атаған, Қайы – солардың бірі"], "narration": "Тоғызыншы – он бірінші ғасырларда Сырдарияның орта және төменгі ағысы, Арал өңірі мен Каспий маңы далаларында Оғыз мемлекеті өмір сүрді. Мемлекетті жабғу басқарды, астанасы Сырдария жағасындағы Жанкент қаласы болды. Оғыздар көшпелі мал шаруашылығын егіншілікпен, қолөнермен және керуен саудасымен ұштастырды. Олар туралы мәліметтер Ибн Фадлан, әл-Истахри, «Худуд әл-Алам» және Махмұд Қашқари еңбектерінде сақталған. Картада он екі нысан белгіленген. Әрқайсысын басып, ішіне кіріп көріңіз."}, {"id": "jankent", "kind": "site", "num": 1, "title": "Жанкент (Янгикент, Жаңакент)", "sub": "Қызылорда облысы, Қазалы ауданы · Оғыз жабғуының астанасы · IX–XI ғғ.", "lon": 62.08, "lat": 45.6, "type": "city", "model": "jankent", "text": ["Жанкент – Қазіргі Қызылорда облысы, Қазалы ауданы, Сырдарияның төменгі ағысында орналасқан. Оғыз мемлекетінің IX–XI ғасырлардағы негізгі саяси орталығы.", "Жанкент – оғыз тарихындағы ең маңызды қалалардың бірі. Ортағасырлық деректерде Янгикент, Жаңа Гузия деген атаулармен кездеседі. Қала оғыз жабғуының ордасы орналасқан саяси орталық ретінде белгілі.", "Жанкенттің географиялық орны өте қолайлы болды. Ол Сырдария мен Арал өңіріндегі отырықшы аймақтарды Каспий маңы, Еділ бойы және солтүстік далалық өңірлермен байланыстыратын жолдарда орналасты.", "Жаңа деректер: қазақстандық археологтар Ресей (И. А. Аржанцева) және Германия (Г. Херке) ғалымдарымен бірлесіп Жанкентті ұзақ жылдар бойы зерттеп келеді. Қала тікбұрышты пішінді, сыртқы қабырғалары жарты дөңгелек мұнаралармен нығайтылған. Соңғы зерттеулер қаланың VII–VIII ғасырларда-ақ пайда болғанын көрсетеді. 2023 жылдан бастап цитадельдің кіреберіс қақпасы, тұрғын үйлер мен шахристан қазылуда."], "facts": ["Оғыз жабғуының саяси билік орталығы болды", "Сауда керуендері мен көшпелі тайпалардың байланыс орнына айналды", "Қолөнер, қыш ыдыс жасау және егіншілік дамыды", "Қалада қорғаныс қабырғалары мен тұрғын үйлер болған", "Ортағасырлық жазба деректерде оғыз билеушісінің ордасы ретінде аталады"], "commons": [{"q": "Jankent", "kw": ["jankent", "zhankent", "dzhankent", "джанкент", "жанкент", "yangikent"]}], "hotspots": {"citadel": {"title": "Цитадель – жабғу ордасы", "text": "Қаланың ең биік әрі ең берік бөлігі. Мұнда оғыз жабғуы, оның отбасы мен жасағы тұрған. 2023 жылдан бері археологтар цитадельдің кіреберіс қақпасын қазып жатыр."}, "gate": {"title": "Қала қақпасы", "text": "Керуендер мен көшпелілер қалаға осы қақпа арқылы кірген. Қақпаны екі жағынан қуатты мұнаралар қорғады."}, "wall": {"title": "Қорғаныс қабырғалары", "text": "Тікбұрышты қаланы шикі кірпіш пен пахсадан соғылған биік қабырғалар қоршады. Қабырғалар жарты дөңгелек мұнаралармен нығайтылған – бұл Жанкенттің ең жақсы сақталған бөлігі."}, "houses": {"title": "Шахристан – тұрғын үйлер", "text": "Қабырға ішіндегі тұрғын аудан. Үйлер шикі кірпіштен салынған, ішінде ошақтар мен тандырлар болған. Қазба кезінде мұнда қыш ыдыстар, тиындар, тұрмыстық заттар табылуда."}, "workshop": {"title": "Қыш шеберханасы", "text": "Жанкентте қолөнер, әсіресе қыш ыдыс жасау дамыды. Құмыралар, хұмдар мен шырақтар арнайы пештерде күйдірілген."}, "yurts": {"title": "Оғыз ауылы", "text": "Оғыздардың бір бөлігі қала маңында киіз үйлерде тұрып, мал бақты. Қала көшпелі және отырықшы халықтың кездесетін орны болды."}, "caravan": {"title": "Керуен жолы", "text": "Жанкент арқылы Хорезмнен Еділ бойына, Каспий маңы мен солтүстік далаға баратын керуендер өтті. Қалаға мал, тері, жүн әкелініп, мата, қыш, металл бұйымдар әкетілді."}, "fields": {"title": "Егістік пен арықтар", "text": "Сырдария суымен суарылатын егістіктерде тары, арпа, бидай өсірілді. Арықтар жүйесі қаланы азық-түлікпен қамтамасыз етті."}, "river": {"title": "Сырдария", "text": "Қала Сырдарияның төменгі ағысында орналасқан. Өзен – тіршілік көзі, сонымен бірге табиғи қорғаныс және су жолы."}, "excavation": {"title": "Қазба орны", "text": "Бүгінгі археологиялық қазбалар: цитадель қақпасы, тұрғын үйлер және шахристан. Жаңа деректер Жанкенттің оғыздардан да ертерек, VII–VIII ғасырларда пайда болғанын көрсетеді."}}, "narration": "Бірінші нысан – Жанкент. Ол Қызылорда облысы Қазалы ауданында, Сырдарияның төменгі ағысында орналасқан. Жанкент – Оғыз мемлекетінің тоғызыншы – он бірінші ғасырлардағы астанасы, оғыз жабғуының ордасы. Ортағасырлық деректерде Янгикент, Жаңа Гузия деп аталады. Қала Сырдария мен Арал өңірін Каспий маңы, Еділ бойы және солтүстік далалармен байланыстыратын жолдардың түйісінде тұрды. Мұнда қолөнер, қыш ыдыс жасау және егіншілік дамыды. Соңғы археологиялық зерттеулер қаланың жетінші – сегізінші ғасырларда-ақ пайда болғанын көрсетеді, ал екі мың жиырма үшінші жылдан бастап цитадель қақпасы мен тұрғын үйлер қазылуда."}, {"id": "jent", "kind": "site", "num": 2, "title": "Жент (Женд)", "sub": "Қызылорда қаласынан оңтүстік-батысқа қарай ~115 км · Жаңадария өзенінің оң жағалауы", "lon": 64.47, "lat": 44.12, "type": "city", "model": "jent", "text": ["Жент – Қызылорда қаласынан оңтүстік-батысқа қарай шамамен 115 км, Жаңадария өзенінің оң жағалауында орналасқан қалашық.", "Жент – оғыз-қыпшақ дәуіріндегі маңызды сауда және мәдени орталықтардың бірі. Қала Сырдарияның көне арналары арқылы Хорезм аймағымен байланыс орнатқан. X ғасырдағы «Худуд әл-Алам» географиялық еңбегінде Жент оғыз қалаларының қатарында аталады.", "Жаңа деректер: X ғасырдың соңында Селжұқтар әулетінің атасы Селжұқ бек өз тайпаласымен Жентке қоныс аударып, исламды қабылдаған. Кейін оның ұрпақтары Ұлы Селжұқ империясын құрды. Сондықтан Жент түркі мемлекеттілігі тарихында ерекше орын алады."], "facts": ["Хорезм мен Дешті Қыпшақ арасындағы сауда қатынастарында маңызды орын алды", "Мұсылман түркі тайпаларының мәдени орталықтарының біріне айналды", "Қалада қолөнер және айырбас сауда дамыды", "XI–XII ғасырларда саяси күрестер мен билік ауысуларына байланысты тарихы өзгерді"], "commons": [], "hotspots": {"mosque": {"title": "Мешіт", "text": "Жент мұсылман түркі тайпаларының мәдени орталықтарының біріне айналды. Селжұқ бек исламды осы өңірде қабылдаған деп саналады."}, "gate": {"title": "Хорезмге апаратын қақпа", "text": "Жаңадария мен Сырдарияның көне арналары бойымен Хорезмге керуен жолдары өтті."}, "caravan": {"title": "Хорезм – Дешті Қыпшақ саудасы", "text": "Жент арқылы Хорезмнің қолөнер бұйымдары далаға, ал даладан мал, тері мен жүн оңтүстікке тасымалданды."}, "river": {"title": "Жаңадария", "text": "Сырдарияның көне сол жақ арнасы. Жент оның оң жағалауында тұрды. Арна суалғаннан кейін қала да біртіндеп қаңырап қалды."}}, "narration": "Екінші нысан – Жент қаласы. Ол Қызылорда қаласынан оңтүстік-батысқа қарай шамамен жүз он бес шақырым жерде, Жаңадария өзенінің оң жағалауында орналасқан. Жент – оғыз-қыпшақ дәуіріндегі маңызды сауда және мәдени орталық. Оныншы ғасырдағы «Худуд әл-Алам» еңбегінде оғыз қалаларының қатарында аталады. Оныншы ғасырдың соңында Селжұқтар әулетінің атасы Селжұқ бек Жентке қоныс аударып, исламды қабылдаған, кейін оның ұрпақтары Ұлы Селжұқ империясын құрды."}, {"id": "zhuara", "kind": "site", "num": 3, "title": "Жуара (Хуара)", "sub": "Сырдарияның төменгі ағысы · Оғыздардың Сыр бойындағы қалаларының бірі", "lon": 63.3, "lat": 45.12, "type": "city", "model": "zhuara", "text": ["Жуара – Сырдарияның төменгі ағысы аймағында орналасқан. Жуара ортағасырлық деректер мен тарихи әдебиеттерде оғыздардың Сыр бойындағы қалаларының бірі ретінде аталады.", "Оның тарихи маңызы Сырдарияның төменгі ағысындағы қоныстар жүйесімен байланысты. Бұл өңірде көшпелі оғыз тайпалары мен отырықшы тұрғындар арасында шаруашылық байланыстар қалыптасқан.", "Жуара туралы деректер әзірге аз, оның нақты орны мен құрылысы әлі де зерттеуді қажет етеді. Бұл – болашақ археологиялық ізденістердің маңызды бағыты. Үлгідегі қала – осы өңірдегі шағын оғыз қалашығының болжамды бейнесі."], "facts": ["Сыр бойындағы оғыз қоныстар жүйесінің бөлігі", "Көшпелі және отырықшы халық арасындағы шаруашылық байланыс", "Нақты орны әлі де зерттелуде"], "commons": [], "hotspots": {"yurts": {"title": "Көшпелілер мен отырықшылар", "text": "Жуара маңында көшпелі оғыздар мал өнімдерін қала тұрғындарының астығы мен қолөнер бұйымдарына айырбастаған."}, "fields": {"title": "Суармалы егіншілік", "text": "Сырдарияның төменгі ағысындағы қоныстар арықтармен суарылатын егістікке сүйенді."}}, "narration": "Үшінші нысан – Жуара, немесе Хуара. Ол Сырдарияның төменгі ағысы аймағында орналасқан. Жуара ортағасырлық деректерде оғыздардың Сыр бойындағы қалаларының бірі ретінде аталады. Оның тарихи маңызы осы өңірдегі қоныстар жүйесімен байланысты: мұнда көшпелі оғыз тайпалары мен отырықшы тұрғындар арасында тығыз шаруашылық байланыстар қалыптасқан. Жуараның нақты орны әлі де зерттеуді қажет етеді."}, {"id": "asanas", "kind": "site", "num": 4, "title": "Асанас (Ашнас)", "sub": "Қызылорда облысы · Сырдарияның төменгі ағысы · Оғыз және қыпшақ кезеңдері", "lon": 66.05, "lat": 44.45, "type": "city", "model": "asanas", "text": ["Асанас – Қазіргі Қызылорда облысы, Сырдарияның төменгі ағысында орналасқан қалашық. Асанас – Сыр өңіріндегі ортағасырлық қала мәдениетінің маңызды ескерткіштерінің бірі.", "Асанас қаласы оғыз дәуірімен және кейінгі қыпшақ кезеңімен байланысты қарастырылады. Оның тарихы Сырдарияның көне арналарының су режиміне және осы өңірдегі сауда жолдарына тәуелді болды. Қала маңындағы тұрғындардың шаруашылығында егіншілік, мал шаруашылығы және қолөнер маңызды орын алған.", "Асанас Жент, Жанкент, Баршынкентпен бірге Сыр өңіріндегі ортағасырлық қалалар жүйесіне кірді.", "Жаңа деректер: қаланың сыртын үлкен ор қоршап жатыр. Оны 1960–1961 жылдары Хорезм экспедициясы барлап зерттеген. Соңғы зерттеулерде Сығанақ пен Асанас арасындағы керуен жолдары және Асанас-1, 2, 3 қалашықтары сипатталды."], "facts": ["Оғыз және қыпшақ кезеңдерімен байланысты", "Сырдария арналарының су режиміне тәуелді болды", "Егіншілік, мал шаруашылығы, қолөнер дамыған", "Қаланы үлкен ор қоршаған"], "commons": [], "hotspots": {"moat": {"title": "Қорғаныс ор", "text": "Асанасты сыртынан су толтырылған үлкен ор қоршаған. Бұл ор бүгінге дейін жер бедерінде анық байқалады."}, "caravan": {"title": "Сығанақ – Асанас жолы", "text": "Асанас арқылы Сыр бойының жоғарғы қалаларын – Сығанақты төменгі ағыстағы Жент пен Жанкентпен байланыстыратын керуен жолы өтті."}}, "narration": "Төртінші нысан – Асанас, немесе Ашнас. Ол Қызылорда облысында, Сырдарияның төменгі ағысында орналасқан. Асанас оғыз дәуірімен және кейінгі қыпшақ кезеңімен байланысты. Оның тарихы Сырдарияның көне арналарының су режиміне және сауда жолдарына тәуелді болды. Тұрғындар егіншілікпен, мал шаруашылығымен және қолөнермен айналысқан. Асанас Жент, Жанкент және Баршынкентпен бірге Сыр өңіріндегі қалалар жүйесіне кірді. Қаланы сыртынан үлкен ор қоршап жатыр."}, {"id": "kuyuk", "kind": "site", "num": 5, "title": "Күйік-қала", "sub": "Шығыс Арал өңірі · Қуаңдарияның көне арналары · «Батпақтағы қалалар»", "lon": 63.0, "lat": 44.62, "type": "city", "model": "kuyuk", "text": ["Күйік-қала – Қуаңдарияның көне арналары бойы, Шығыс Арал өңірінде орналасқан. Бұл ескерткіштер IX–XI ғасырлардағы оғыз кезеңінің қалалық мәдениетін зерттеу үшін ерекше маңызды.", "Археолог С. П. Толстов оларды «батпақтағы қалалар» тобына жатқызған. Мұндай атау олардың ежелгі өзен арналарының сулы, батпақты атырауларында орналасуына байланысты қалыптасқан.", "Қамыс пен су қоршаған қалалар табиғи қорғанысқа ие болды. Оларды XX ғасырдың ортасында Хорезм археологиялық-этнографиялық экспедициясы зерттеді."], "facts": ["IX–XI ғғ. оғыз қалалық мәдениеті", "С. П. Толстов: «батпақтағы қалалар»", "Сулы, батпақты атырауда орналасқан"], "commons": [], "hotspots": {"marsh": {"title": "Батпақты атырау", "text": "Қуаңдарияның көне арналары таралып, қамыс өскен батпақ түзген. Қала осы су ортасындағы төбеде салынған – бұл жауға қарсы табиғи қамал болды."}, "wall": {"title": "Дөңгелек қамал", "text": "«Батпақтағы қалалардың» көбі дөңгелек немесе сопақ пішінді, қалың қабырғалы шағын бекіністер болды."}}, "narration": "Бесінші нысан – Күйік-қала. Ол Шығыс Арал өңірінде, Қуаңдарияның көне арналары бойында орналасқан. Бұл ескерткіштер тоғызыншы – он бірінші ғасырлардағы оғыз кезеңінің қалалық мәдениетін зерттеу үшін ерекше маңызды. Археолог Сергей Толстов оларды «батпақтағы қалалар» тобына жатқызған, себебі олар ежелгі өзен арналарының сулы, батпақты атырауларында орналасқан."}, {"id": "sauran", "kind": "site", "num": 6, "title": "Сауран (Сабран)", "sub": "Түркістан облысы · Сырдария бойындағы бекіністі қала және сауда орталығы", "lon": 68.21, "lat": 43.37, "type": "city", "model": "sauran", "text": ["Сауран – Қазіргі Түркістан облысы аумағында орналасқан. Сырдария бойындағы маңызды бекіністі қала және сауда орталығы болған. Оғыздар мен көрші түркі тайпалары арасындағы экономикалық байланыстарда рөл атқарған.", "Қазіргі көрінетін Сауран қирандыларының басым бөлігі кейінгі ортағасырлық кезеңге жатады.", "Сауранның сопақ пішінді қамалы биік қабырғалармен және мұнаралармен қоршалған. Қала ішінде орталық алаң, мешіт пен медресе орындары, ал қала сыртында жерасты су құбырлары – кәріздер сақталған. Қаладан біршама қашықтықта атақты Мір-Сауран мұнарасы тұрған."], "facts": ["Бекіністі қала және сауда орталығы", "Сопақ пішінді қамал", "Кәріз – жерасты су жүйесі", "Көрінетін қирандылар негізінен кейінгі ортағасырлық"], "commons": [{"q": "Sauran", "kw": ["sauran", "сауран"]}], "hotspots": {"mosque": {"title": "Жұма мешіті мен медресе", "text": "Қаланың орталық алаңында жұма мешіті мен медресе тұрған. Бұл құрылыстардың қалдықтары кейінгі ортағасырлық кезеңге жатады."}, "karez": {"title": "Кәріздер", "text": "Тау етегінен қалаға су әкелетін жерасты каналдары. Жер бетінде олар қатар тізілген құдық-шахталар түрінде көрінеді."}, "minaret": {"title": "Мір-Сауран мұнарасы", "text": "Ортағасырлық жазбаларда Сауранның биік мұнарасы аңызға айналған. Оның қалдығы қаладан біршама қашықтықта сақталған."}, "wall": {"title": "Сопақ қамал", "text": "Сауранның сопақ пішінді қабырғалары бүгінге дейін жақсы сақталған. Қала Сырдария бойындағы ең мықты бекіністердің бірі болды."}}, "narration": "Алтыншы нысан – Сауран, немесе Сабран. Ол қазіргі Түркістан облысы аумағында орналасқан. Сауран Сырдария бойындағы маңызды бекіністі қала және сауда орталығы болған, оғыздар мен көрші түркі тайпалары арасындағы экономикалық байланыстарда рөл атқарған. Қазіргі көрінетін Сауран қирандыларының басым бөлігі кейінгі ортағасырлық кезеңге жатады. Қаланың сопақ қамалы, мешіт пен медресе орындары және жерасты су жүйесі – кәріздер сақталған."}, {"id": "sygnak", "kind": "site", "num": 7, "title": "Сығанақ (Суғнақ)", "sub": "Қызылорда облысы, Жаңақорған ауданы · Оғыз-қыпшақ дәуірі · Ақ Орда астанасы", "lon": 67.48, "lat": 44.2, "type": "city", "model": "sygnak", "text": ["Сығанақ – Қазіргі Қызылорда облысының Жаңақорған ауданы аумағында орналасқан. Оғыз-қыпшақ дәуірімен байланысты қала.", "Кейін Қыпшақ бірлестіктерінің, Ақ Орданың және Қазақ хандығының тарихында маңызды орын алды. Оның тарихи маңызы бірнеше ғасыр бойы сақталды.", "Махмұд Қашқари XI ғасырда Сығанақты оғыз қаласы ретінде атаған. XIV ғасырда қала Ақ Орданың астанасы болды. Қала маңында Көк кесене деп аталатын ортағасырлық кесене бар."], "facts": ["Махмұд Қашқари: оғыз қаласы", "XIV ғ. – Ақ Орданың астанасы", "Қазақ хандығы тарихындағы маңызды орталық", "Биік төбеде орналасқан бекініс"], "commons": [{"q": "Sygnak", "kw": ["sygnak", "sighnaq", "signak", "сыгнак", "сығанақ", "suganak"]}], "hotspots": {"citadel": {"title": "Ақ Орда ордасы", "text": "XIV ғасырда Сығанақ Ақ Орда хандарының астанасы болды. Қаланың ортасындағы биік төбеде билеуші сарайы мен цитадель тұрған."}, "mausoleum": {"title": "Көк кесене", "text": "Сығанақ маңындағы күйдірілген кірпіштен салынған күмбезді кесене. Ол қаланың кейінгі дәуірдегі рухани маңызын көрсетеді."}, "mosque": {"title": "Мешіт пен медресе", "text": "Сығанақ ғылым мен діни білімнің де орталығы болды. Мұнда әйгілі ғұламалар өмір сүріп, еңбек жазған."}}, "narration": "Жетінші нысан – Сығанақ, немесе Суғнақ. Ол Қызылорда облысының Жаңақорған ауданында орналасқан. Сығанақ – оғыз-қыпшақ дәуірімен байланысты қала. Махмұд Қашқари оны оғыз қаласы деп атаған. Кейін Сығанақ қыпшақ бірлестіктерінің, Ақ Орданың және Қазақ хандығының тарихында маңызды орын алды. Он төртінші ғасырда ол Ақ Орданың астанасы болды. Оның тарихи маңызы бірнеше ғасыр бойы сақталды."}, {"id": "otrar", "kind": "site", "num": 8, "title": "Фараб (Отырар)", "sub": "Арыс өзенінің Сырдарияға құяр маңы · Қолөнер, сауда және ғылым орталығы", "lon": 68.3, "lat": 42.85, "type": "city", "model": "otrar", "text": ["Фараб (Отырар) – Арыс өзенінің Сырдарияға құяр маңында орналасқан. Ірі қолөнер, сауда және ғылым орталығы болған. Оғыздардың оңтүстіктегі көрші аймақтармен байланысы тұрғысынан маңызды.", "Бірақ Отырарды бүкіл IX–XI ғасырларда оғыздардың тікелей билігіндегі қала деп көрсету дұрыс емес.", "Фараб өлкесі – ұлы ойшыл Әбу Насыр әл-Фарабидің туған жері. 1218 жылғы керуен оқиғасы мен 1219–1220 жылдардағы моңғол қоршауы қала тарихындағы қайғылы бет болды. Маңында Арыстан баб кесенесі орналасқан."], "facts": ["Ірі қолөнер, сауда және ғылым орталығы", "Оғыздардың оңтүстікпен байланысы үшін маңызды", "IX–XI ғғ. оғыздардың тікелей билігінде болмаған", "Әл-Фарабидің туған өлкесі"], "commons": [{"q": "Otrar", "kw": ["otrar", "отрар", "отырар"]}, {"q": "Arystan Bab", "kw": ["arystan", "арыстан"]}], "hotspots": {"citadel": {"title": "Отырар цитаделі", "text": "Қаланың биік төбесіндегі бекініс. 1219–1220 жылдары Отырар моңғол әскеріне бірнеше ай қарсылық көрсетті."}, "mosque": {"title": "Жұма мешіті", "text": "Отырардағы бағаналы мешіттің іргетасы қазба кезінде ашылған. Қала ислам мәдениеті мен ғылымының ірі орталығы болды."}, "workshop": {"title": "Қолөнер кварталы", "text": "Отырарда қыш құмыралар, сырлы ыдыстар, шыны және металл бұйымдар жасалған. Қазба кезінде шеберханалар мен пештер табылды."}, "mausoleum": {"title": "Арыстан баб кесенесі", "text": "Отырар маңындағы әйгілі кесене. Қазіргі ғимарат кейінгі кезеңде қайта салынған."}}, "narration": "Сегізінші нысан – Фараб, яғни Отырар. Ол Арыс өзенінің Сырдарияға құяр маңында орналасқан. Отырар – ірі қолөнер, сауда және ғылым орталығы, ұлы ойшыл әл-Фарабидің туған өлкесі. Ол оғыздардың оңтүстіктегі көрші аймақтармен байланысы тұрғысынан маңызды. Бірақ Отырарды бүкіл тоғызыншы – он бірінші ғасырларда оғыздардың тікелей билігіндегі қала деп көрсету дұрыс емес."}, {"id": "sutkent", "kind": "site", "num": 9, "title": "Сүткент (Сіткун)", "sub": "Сырдарияның орта ағысы · Қаратау етегі · Егіншілік пен сауда өңірі", "lon": 68.0, "lat": 43.75, "type": "city", "model": "sutkent", "text": ["Сүткент – Сырдарияның орта ағысындағы ортағасырлық қалалардың бірі. Егіншілік пен сауда дамыған өңірде орналасқан. Оғыздардың оңтүстік аймақтармен байланысын зерттеуде аталады.", "X ғасырдағы араб географы әл-Мақдиси Сүткентті исламды қабылдаған түркілер жиналатын орын ретінде сипаттайды. Қала Қаратау жотасының етегіндегі жайылымдар мен Сыр бойының егістіктері арасында тұрды."], "facts": ["Сырдарияның орта ағысындағы қала", "Егіншілік пен сауда дамыған", "Қаратау етегінде", "Оғыздардың оңтүстікпен байланысы"], "commons": [], "hotspots": {"hills": {"title": "Қаратау етегі", "text": "Қаратау жотасының жайылымдары көшпелілердің қыстауы мен жайлауы болды. Сүткент тау мен өзен арасындағы сауда нүктесі болды."}, "fields": {"title": "Егістік алқаптар", "text": "Тау өзендері мен арықтардың суы Сүткент маңындағы егіншілікті қамтамасыз етті."}}, "narration": "Тоғызыншы нысан – Сүткент, немесе Сіткун. Ол Сырдарияның орта ағысындағы ортағасырлық қалалардың бірі. Сүткент егіншілік пен сауда дамыған өңірде, Қаратау жотасының етегінде орналасқан. Оғыздардың оңтүстік аймақтармен байланысын зерттеуде аталады. Оныншы ғасырдағы әл-Мақдиси Сүткентті исламды қабылдаған түркілер жиналатын орын ретінде сипаттайды."}, {"id": "karnak", "kind": "site", "num": 10, "title": "Қарнақ", "sub": "Түркістан өңірі · Қолөнер мен сауда орталығы", "lon": 68.45, "lat": 43.45, "type": "city", "model": "karnak", "text": ["Қарнақ – Қазіргі Түркістан өңірімен байланысты тарихи қала. Орта ғасырларда қолөнер мен сауда орталықтарының бірі болған.", "Оғыз дәуіріндегі Сыр бойы қалаларының қатарында аталғанымен, оның саяси бағыныстылығы әр кезеңде өзгеріп отырған.", "Бұл қалалар туралы мәліметтер Қазақстан тарихына арналған еңбектерде және Сырдария бойындағы ортағасырлық қала мәдениетін зерттеген ғылыми мақалаларда кездеседі."], "facts": ["Қолөнер мен сауда орталығы", "Саяси бағыныстылығы әр кезеңде өзгерген", "Түркістан өңірінде"], "commons": [], "hotspots": {"workshop": {"title": "Қолөнершілер кварталы", "text": "Қарнақ – қолөнер орталығы. Мұнда қыш ыдыстар күйдіріліп, металл және ағаш бұйымдар жасалған."}, "caravan": {"title": "Сауда жолы", "text": "Қарнақ Түркістан, Сауран, Отырар қалаларын байланыстырған жергілікті сауда жолдарының бойында тұрды."}}, "narration": "Оныншы нысан – Қарнақ. Ол қазіргі Түркістан өңірімен байланысты тарихи қала. Орта ғасырларда Қарнақ қолөнер мен сауда орталықтарының бірі болған. Оғыз дәуіріндегі Сыр бойы қалаларының қатарында аталғанымен, оның саяси бағыныстылығы әр кезеңде өзгеріп отырған."}, {"id": "kenti", "kind": "site", "num": 11, "title": "Кенті-баба, Үштам, Қаңға-баба қорымдары", "sub": "Маңғыстау облысы, Түпқараған өңірі · X ғасырдан бастап", "lon": 50.65, "lat": 44.55, "type": "necropolis", "model": "kenti", "text": ["Түпқараған өңіріндегі Кенті-баба, Үштам, Қаңға-баба және басқа да көне қорымдарда әртүрлі тарихи кезеңдерге жататын қабірүсті құрылыстары сақталған.", "Олардың кейбірінің мерзімделуі X–XI ғасырлардан басталады. Бұл кезең оғыз тайпаларының Арал-Каспий өңіріндегі тарихи белсенділігімен сәйкес келеді. Аталған қорымдарда тас өңдеу, қабірүсті ескерткіштерін орнату және жерлеу орындарын арнайы құрылыстармен белгілеу дәстүрлері байқалады.", "Кенті-баба қорымында X–XVI ғасырларға жататын 130-ға жуық жерлеу бар. Мұнда қойтастар мен құлпытастар кездеседі, олардың бетінде көбіне қылыш бейнеленген – бұл жерде жауынгерлер жерленгенін білдіреді. Кесене қабырғаларында жылқы, түйе және алақан бейнелері қашалған. Үштамда X–XV ғасырларға жататын, биіктігі 6 метрдей үш күмбезді кесене бар, ол Кенті-бабадан шамамен 3 км жерде орналасқан."], "facts": ["Кенті-баба: ~130 жерлеу, X–XVI ғғ.", "Қойтастар мен құлпытастар, қылыш бейнелері", "Үштам: 3 күмбезді кесене, ~6 м", "Тас өңдеу және қабірүсті құрылыс дәстүрі"], "commons": [{"q": "Kenty Baba", "kw": ["kenty", "kenti", "кенты", "кенті"]}], "hotspots": {"maus_a": {"title": "Кенті-баба кесенесі", "text": "Ақшыл ұлутастан қаланған биік төртбұрышты кесене. Жоғарғы жағында тісті белдеу бар, кіреберісі шағын. Кесене қабырғаларында жылқы, түйе және алақан бейнелері қашалған.", "photo": "img/kenti_mausoleums.jpg"}, "maus_b": {"title": "Кесене іші: сандықтастар", "text": "Төбесі ашық кесененің ішінде тас тақталар үстіне қойылған сандықтастар мен екі басында дөңгелек басты тік тастар тұр. Ортада түйінделген шүберегі бар ағаш – зиярат белгісі. Бұл кесенеге ішіне кіріп көріңіз!", "photo": "img/kenti_sarcophagi.jpg"}, "kanga": {"title": "Қаңға-баба қорымы", "text": "Тас тақталармен қоршалған көптеген қабірлер. Сандықтастардың бүйірлерінде қараңғы ойықтар бар. Бұл – Маңғыстаудың тас өңдеу дәстүрінің жарқын үлгісі.", "photo": "img/kanga_necropolis.jpg"}, "ushtam": {"title": "Үштам: тас қоршау", "text": "Жалпақ тастарды қабаттап қалап салынған төртбұрышты қоршау. Артында Маңғыстаудың ақ бор таулары көрінеді.", "photo": "img/ushtam_enclosure.jpg"}, "ram": {"title": "Қошқартас (қойтас)", "text": "Тас үстелдің үстіне қойылған, бетіне шырша тәрізді өрнек салынған домалақ тас. Ол қошқардың мүйізін еске салады – малшы халықтың берекесі мен күшінің символы.", "photo": "img/koytas_ram.jpg"}, "kumbez": {"title": "Күмбез бен құлпытастар", "text": "Сатылы сандықтастардың басында биік төртбұрышты құлпытастар тұр. Артында конус күмбезді кесене. Үштамдағы күмбезді кесенелердің биіктігі 6 метрдей.", "photo": "img/kumbez_kulpytas.jpg"}, "saber": {"title": "Қылыш бейнелі құлпытас", "text": "Кенті-баба құлпытастарында көбіне қылыш бейнеленген. Бұл – жауынгердің қабірі екенін білдіреді."}, "horns": {"title": "Арқар мүйіздері", "text": "Кесенелердің бірінің ішінде арқар мүйіздері үйіліп жатыр. Мұны аңшылар сәтті аң аулау үшін бата сұрап әкелген деп есептеледі."}}, "narration": "Он бірінші нысан – Маңғыстау облысы Түпқараған өңіріндегі Кенті-баба, Үштам және Қаңға-баба қорымдары. Мұнда әртүрлі тарихи кезеңдерге жататын қабірүсті құрылыстары сақталған. Олардың кейбірінің мерзімделуі оныншы – он бірінші ғасырлардан басталады, бұл оғыз тайпаларының Арал-Каспий өңіріндегі белсенділігімен сәйкес келеді. Кенті-баба қорымында жүз отызға жуық жерлеу бар, құлпытастарда көбіне қылыш бейнеленген. Қорымдарда тас өңдеу, қабірүсті ескерткіштерін орнату дәстүрлері айқын байқалады."}, {"id": "beyneu", "kind": "site", "num": 12, "title": "Бейнеу: Гүндіз Алп әскербасының жерлеу қорымы", "sub": "Маңғыстау облысы, Бейнеу ауданы · XII ғ. соңы – XIII ғ. басы (болжам)", "lon": 55.2, "lat": 45.3, "type": "necropolis", "model": "beyneu", "text": ["Маңғыстау облысы Бейнеу ауданы аумағынан анықталған көне жерлеу ескерткіші – өңірдің ортағасырлық тарихын зерттеуде маңызды археологиялық нысандардың бірі. Зерттеу барысында ескерткіштің XII ғасырдың соңы мен XIII ғасырдың басына жатуы мүмкін екендігі туралы болжам жасалды.", "Ескерткіштің басты ерекшелігі – қабірлердің ірі тас тақталармен қоршалуы, тік орнатылған құлпытастардың кездесуі, тас беттерінде көне түркі жазуларына ұқсас белгілердің, әскери сипаттағы бейнелердің және ру-тайпалық таңбалардың сақталуы. Әсіресе, оғыздардың Қайы тайпасының таңбасына ұқсас белгілер ғылыми қызығушылық тудырады.", "Қорым Гүндіз Алп есімді әскербасыға тиесілі деп есептеледі. Кейбір түркі шежірелерінде Гүндіз Алп есімі Қайы тайпасы көсемдерінің арасында аталады. Бұл байланыс әлі де ғылыми тұрғыда дәлелдеуді қажет етеді – сондықтан бұл ескерткіш жаңа археологиялық деректердің ең қызықты мысалдарының бірі."], "facts": ["Мерзімі: XII ғ. соңы – XIII ғ. басы (болжам)", "Ірі тас тақталы қоршаулар", "Көне түркі жазуына ұқсас белгілер", "Қайы тайпасының таңбасына ұқсас белгі"], "commons": [], "hotspots": {"enclosure": {"title": "Тас тақталы қоршау", "text": "Қабірлер ірі тас тақталармен қоршалған. Уақыт өте келе тақталар құлап, шашылып жатыр.", "photo": "img/beyneu_enclosure.jpg"}, "slabbox": {"title": "Тік тақталы қабір", "text": "Тік қойылған қалың тас тақталардан құралған қабір қоршауы. Тастардың бетінде ұлу мен қына іздері бар.", "photo": "img/beyneu_slab_box.jpg"}, "carved": {"title": "Жазулы құлпытас", "text": "Құлап жатқан ұзын құлпытас. Басы дөңгелек иірім түрінде, бетінде жазу тақталары мен өрнектер, ал шетінде таңба белгісі қашалған.", "photo": "img/beyneu_carved_kulpytas.jpg"}, "warrior": {"title": "Жауынгер бейнелі тас", "text": "Тік тұрған тас бетінде әскери сипаттағы бейне қашалған. Мұндай бейнелер жерленген адамның әскербасы болғанын көрсетеді.", "photo": "img/beyneu_warrior_stela.jpg"}, "tamga": {"title": "Қайы таңбасына ұқсас белгі", "text": "Жерге жартылай көмілген тастағы таңба. Ол оғыздардың Қайы тайпасының таңбасына ұқсайды. Махмұд Қашқари XI ғасырда оғыздардың 22 руының таңбаларын сызып қалдырған, Қайы – солардың бірі.", "photo": "img/beyneu_tamga.jpg"}, "stone": {"title": "Тік құлпытас", "text": "Басы дөңгелектеніп өңделген тік құлпытас. Бетінде сызық түріндегі белгілер сақталған.", "photo": "img/beyneu_kulpytas.jpg"}}, "narration": "Он екінші нысан – Маңғыстау облысы Бейнеу ауданы маңайындағы Гүндіз Алп әскербасына тиесілі жерлеу қорымы. Зерттеушілер ескерткішті он екінші ғасырдың соңы мен он үшінші ғасырдың басына жатқызуы мүмкін деп болжайды. Мұнда қабірлер ірі тас тақталармен қоршалған, тік құлпытастар тұр, тастардың бетінде көне түркі жазуларына ұқсас белгілер, әскери бейнелер және ру-тайпалық таңбалар сақталған. Әсіресе, оғыздардың Қайы тайпасының таңбасына ұқсас белгілер ғылыми қызығушылық тудырады."}, {"id": "museum", "kind": "museum", "title": "Виртуалды музей: жәдігерлер залы", "sub": "Жәдігерді басып, айналдырып, үлкейтіп қараңыз", "text": ["Бұл залда Сыр бойы мен Маңғыстау ескерткіштерінен белгілі заттардың үш өлшемді үлгілері қойылған. Әр жәдігерді басыңыз – ол жақындап, айналады. Тінтуірмен немесе саусақпен оны кез келген жағынан қарап, үлкейтуге болады."], "facts": ["Жәдігерді басу – жақындату", "Сүйреу – айналдыру", "Дөңгелек – үлкейту"], "narration": "Виртуалды музейдің жәдігерлер залына қош келдіңіз. Мұнда оғыз дәуірінің қыш құмыралары, шырағы, теңгесі, қылышы, жебе ұштары, таңбалы тасы, қошқартас және қобыз үлгілері қойылған. Әр жәдігерді басып, айналдырып, жақыннан қараңыз."}, {"id": "outro", "kind": "outro", "title": "Қорытынды", "sub": "Жаңа археологиялық деректер – түркі мемлекеттілігінің тамыры", "text": ["Сыр бойы мен Маңғыстау ескерткіштері Оғыз мемлекетінің тек көшпелі емес, қалалық мәдениеті дамыған, сауда жолдарын бақылаған күшті мемлекет болғанын көрсетеді.", "Жанкенттегі соңғы қазбалар қаланың VII–VIII ғасырларда-ақ пайда болғанын анықтады. Жент Селжұқтар әулетінің бастауымен байланысты. Бейнеу маңындағы қорымдағы Қайы таңбасына ұқсас белгілер оғыз тайпаларының Арал-Каспий өңіріндегі ізін нақтылайды. Осылайша жаңа археологиялық деректер түркі мемлекеттілігінің қалыптасу тарихын жаңа қырынан ашады."], "facts": [], "sources": ["Ибн Фадлан. Еділге саяхат жазбалары (922 ж.)", "«Худуд әл-Алам» (Әлем шекаралары), X ғ.", "Махмұд Қашқари. «Диуани лұғат ат-түрк», XI ғ.", "Толстов С. П. По следам древнехорезмийской цивилизации. – М.–Л., 1948", "Аржанцева И. А. және т.б. Городище Джанкент: археологические исследования // Древности, 2019", "Шораев Б., Сұлтанжанов Ж. Оғыз қалалары жазба деректерде // ҚазҰУ Хабаршысы. Тарих сериясы, 2021", "Қазақстан тарихы (көне заманнан бүгінге дейін). 5 томдық. 2-том", "e-history.kz: «100 жаңа есім / 100 киелі орын» – Кенті-баба қорымы", "welcome.kz: Kenty Baba Necropolis, Ushtam mausoleum (2022)", "zakon.kz, kazpravda.kz: Жанкент қазбалары туралы материалдар"], "narration": "Қорытындылай келе, Сыр бойы мен Маңғыстау ескерткіштері Оғыз мемлекетінің қалалық мәдениеті дамыған, сауда жолдарын бақылаған күшті мемлекет болғанын көрсетеді. Жанкенттегі соңғы қазбалар, Жент пен Селжұқтар тарихы, Бейнеу маңындағы Қайы таңбасына ұқсас белгілер – мұның бәрі түркі мемлекеттілігінің қалыптасу тарихын жаңа қырынан ашады. Назарларыңызға рақмет!"}], "generic": {"citadel": {"title": "Цитадель", "text": "Қаланың ең биік әрі берік бөлігі. Мұнда билеуші мен оның жасағы тұрған."}, "gate": {"title": "Қала қақпасы", "text": "Керуендер қалаға осы қақпа арқылы кірді. Қақпаны екі жағынан мұнаралар қорғады."}, "wall": {"title": "Қорғаныс қабырғасы", "text": "Шикі кірпіш пен пахсадан соғылған қабырғалар мұнаралармен нығайтылған."}, "houses": {"title": "Шахристан – тұрғын үйлер", "text": "Шикі кірпіштен салынған, жалпақ төбелі, ауласы бар үйлер. Әр үйде тандыр мен ошақ болған."}, "workshop": {"title": "Қыш шеберханасы", "text": "Күмбез тәрізді пештерде қыш құмыралар, хұмдар мен шырақтар күйдірілген."}, "yurts": {"title": "Көшпелілер қонысы", "text": "Оғыздардың бір бөлігі қала маңында киіз үйлерде тұрып, мал бақты."}, "caravan": {"title": "Сауда керуені", "text": "Түйе керуендері қалаға мата, қыш, металл бұйымдар әкеліп, даладан мал, тері мен жүн алып кетті."}, "fields": {"title": "Егістік пен арықтар", "text": "Арықтармен суарылатын алқаптарда тары, арпа, бидай өсірілді."}, "river": {"title": "Өзен арнасы", "text": "Сыр бойының қалалары өзен арналарына тәуелді болды: арна суалса, қала да қаңырап қалды."}, "mosque": {"title": "Мешіт", "text": "X–XI ғасырларда Сыр бойының түркілері арасында ислам кеңінен тарады."}, "minaret": {"title": "Мұнара", "text": "Мешіттің жанындағы биік мұнара алыстан көрінетін бағдар болды."}, "moat": {"title": "Ор", "text": "Қаланы қоршаған су толы ор – қосымша қорғаныс."}, "marsh": {"title": "Батпақ", "text": "Қамыс пен су – табиғи қорғаныс."}, "karez": {"title": "Кәріз", "text": "Жерасты су құбыры."}, "hills": {"title": "Таулар", "text": "Тау етегіндегі жайылымдар."}, "mausoleum": {"title": "Кесене", "text": "Күмбезді кесене."}, "excavation": {"title": "Қазба орны", "text": "Археологтар осы жерде қазба жұмыстарын жүргізуде. Табылған заттар қала тарихын нақтылайды."}}, "museum": [{"id": "jug", "title": "Қыш құмыра", "text": "Оғыз қалаларында жиі табылатын құлақты қыш құмыра. Ол қыш шарығында жасалып, пеште күйдірілген. Бетіне қызыл бояумен белдеу салынған."}, {"id": "khum", "title": "Хұм – астық құмырасы", "text": "Астық, май және су сақтауға арналған үлкен ыдыс. Хұмдар үйлердің жертөлелерінде қатар тұрған."}, {"id": "lamp", "title": "Шырақ", "text": "Майлы шам. Ұшындағы тесікке білте салынып, мал майы немесе өсімдік майымен жағылған."}, {"id": "coin", "title": "Мыс теңге", "text": "Сыр бойы қалаларында ақша айналымы болған. Теңгелерде араб жазуы мен билеушінің таңбасы басылған."}, {"id": "sword", "title": "Қылыш", "text": "Аздап иілген жүзді түркі қылышы. Кенті-баба құлпытастарында дәл осындай қылыш бейнелері жиі кездеседі."}, {"id": "arrows", "title": "Жебе ұштары", "text": "Темірден соғылған жебе ұштары. Оғыздар – шебер садақшылар. «Оғыз» сөзінің өзі «оқ» сөзімен байланыстырылады."}, {"id": "tamga", "title": "Таңбалы тас", "text": "Қайы тайпасының таңбасына ұқсас белгісі бар тас. Таңба – рудың белгісі. Махмұд Қашқари оғыздардың 22 руының таңбасын сызып қалдырған."}, {"id": "ram", "title": "Қошқартас", "text": "Маңғыстау қорымдарына тән қошқар бейнелі қабірүсті тас. Қошқар – күш пен береке символы."}, {"id": "kobyz", "title": "Қобыз", "text": "Түркі халықтарының ең көне ысқышты аспабы. Аңыз бойынша, оны Қорқыт ата жасаған. Қорқыт ата есімі оғыз эпосымен және Сыр бойымен тығыз байланысты."}, {"id": "yurt", "title": "Киіз үй", "text": "Көшпелі оғыздардың баспанасы. Ағаш сүйегі тез жиналып, тез бөлшектеледі, киізі жылуды сақтайды."}], "audio": ["gen_caravan", "gen_citadel", "gen_excavation", "gen_fields", "gen_gate", "gen_hills", "gen_houses", "gen_karez", "gen_marsh", "gen_mausoleum", "gen_minaret", "gen_moat", "gen_mosque", "gen_river", "gen_wall", "gen_workshop", "gen_yurts", "hs_asanas_caravan", "hs_asanas_moat", "hs_beyneu_carved", "hs_beyneu_enclosure", "hs_beyneu_slabbox", "hs_beyneu_stone", "hs_beyneu_tamga", "hs_beyneu_warrior", "hs_jankent_caravan", "hs_jankent_citadel", "hs_jankent_excavation", "hs_jankent_fields", "hs_jankent_gate", "hs_jankent_houses", "hs_jankent_river", "hs_jankent_wall", "hs_jankent_workshop", "hs_jankent_yurts", "hs_jent_caravan", "hs_jent_gate", "hs_jent_mosque", "hs_jent_river", "hs_karnak_caravan", "hs_karnak_workshop", "hs_kenti_horns", "hs_kenti_kanga", "hs_kenti_kumbez", "hs_kenti_maus_a", "hs_kenti_maus_b", "hs_kenti_ram", "hs_kenti_saber", "hs_kenti_ushtam", "hs_kuyuk_marsh", "hs_kuyuk_wall", "hs_otrar_citadel", "hs_otrar_mausoleum", "hs_otrar_mosque", "hs_otrar_workshop", "hs_sauran_karez", "hs_sauran_minaret", "hs_sauran_mosque", "hs_sauran_wall", "hs_sutkent_fields", "hs_sutkent_hills", "hs_sygnak_citadel", "hs_sygnak_mausoleum", "hs_sygnak_mosque", "hs_zhuara_fields", "hs_zhuara_yurts", "mus_arrows", "mus_coin", "mus_jug", "mus_khum", "mus_kobyz", "mus_lamp", "mus_ram", "mus_sword", "mus_tamga", "mus_yurt", "slide_asanas", "slide_beyneu", "slide_intro", "slide_jankent", "slide_jent", "slide_karnak", "slide_kenti", "slide_kuyuk", "slide_map", "slide_museum", "slide_otrar", "slide_outro", "slide_sauran", "slide_sutkent", "slide_sygnak", "slide_zhuara"]};</script>
+<script type="module">
+// ============================================================================
+//  CORE: three.js setup, helpers, random/noise
+// ============================================================================
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const C = window.CONTENT;
+const $ = (s) => document.querySelector(s);
+const PI = Math.PI, TAU = PI * 2;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const ease = (t) => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+// seeded random ------------------------------------------------------------
+let _seed = 1;
+const srand = (s) => { _seed = (s >>> 0) % 2147483647 || 1; };
+const rnd = () => { _seed = (_seed * 16807) % 2147483647; return (_seed - 1) / 2147483646; };
+const R = (a, b) => a + (b - a) * rnd();
+const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
+
+function hash2(x, y) {
+  let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+function fbm(x, y, o = 4) { let s = 0, a = .5, f = 1; for (let i = 0; i < o; i++) { s += a * vnoise(x * f, y * f); f *= 2.03; a *= .5; } return s; }
+
+// renderer -------------------------------------------------------------------
+const canvas = $('#scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+labelRenderer.domElement.className = 'labels';
+document.body.appendChild(labelRenderer.domElement);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 3000);
+camera.position.set(0, 160, 140);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.autoRotateSpeed = 0.5;
+controls.screenSpacePanning = false;
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); labelRenderer.setSize(innerWidth, innerHeight);
+});
+
+// animated things registry (per world) ------------------------------------------
+// each world: { scene, update(dt,t), clickables:[], view:{pos,target}, limits, dispose }
+const ANIM_GLOBAL = [];
+
+// generic helpers -----------------------------------------------------------
+function mat(color, o = {}) { return new THREE.MeshStandardMaterial(Object.assign({ color, roughness: .92, metalness: 0 }, o)); }
+function basic(color, o = {}) { return new THREE.MeshBasicMaterial(Object.assign({ color }, o)); }
+function mesh(geo, m, x = 0, y = 0, z = 0, cast = true, recv = true) {
+  const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = cast; o.receiveShadow = recv; return o;
+}
+// rescale box UVs so textures tile in world units (s = units per tile)
+function boxUV(geo, w, h, d, s = 1) {
+  const uv = geo.attributes.uv; const dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+  const per = uv.count / 6;
+  for (let f = 0; f < 6; f++) for (let i = 0; i < per; i++) {
+    const k = f * per + i; uv.setXY(k, uv.getX(k) * dims[f][0] / s, uv.getY(k) * dims[f][1] / s);
+  }
+  uv.needsUpdate = true; return geo;
+}
+function box(w, h, d, s) { const g = new THREE.BoxGeometry(w, h, d); return s ? boxUV(g, w, h, d, s) : g; }
+
+function label(html, cls, onClick) {
+  const el = document.createElement('div'); el.className = cls; el.innerHTML = html;
+  if (onClick) { el.addEventListener('pointerdown', e => e.stopPropagation()); el.addEventListener('click', e => { e.stopPropagation(); onClick(e); }); }
+  return new CSS2DObject(el);
+}
+
+// sky dome shader --------------------------------------------------------------
+function skyDome(top, horizon, sunDir, sunCol = 0xffe3b0, r = 1500) {
+  const m = new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: { top: { value: new THREE.Color(top) }, hor: { value: new THREE.Color(horizon) }, sun: { value: sunDir.clone().normalize() }, sc: { value: new THREE.Color(sunCol) } },
+    vertexShader: `varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+    fragmentShader: `uniform vec3 top,hor,sun,sc; varying vec3 vD;
+      void main(){ float h = clamp(vD.y,0.,1.); vec3 c = mix(hor, top, pow(h,.55));
+        float s = max(dot(vD, sun),0.); c += sc*pow(s,180.)*1.6 + sc*pow(s,8.)*.25;
+        if(vD.y<0.) c = hor*.92;
+        gl_FragColor = vec4(c,1.);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`
+  });
+  const s = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 16), m); s.renderOrder = -10; return s;
+}
+
+// water shader (with fog) ----------------------------------------------------------
+function waterMat(color = 0x1f5f7a, opacity = .9, scale = 1) {
+  const m = new THREE.ShaderMaterial({
+    transparent: true, fog: true, depthWrite: false,
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { t: { value: 0 }, c: { value: new THREE.Color(color) }, o: { value: opacity }, k: { value: scale } }]),
+    vertexShader: `varying vec3 vW;
+      #include <fog_pars_vertex>
+      void main(){ vec4 w = modelMatrix*vec4(position,1.); vW = w.xyz; vec4 mvPosition = viewMatrix*w; gl_Position = projectionMatrix*mvPosition;
+      #include <fog_vertex>
+      }`,
+    fragmentShader: `uniform float t,o,k; uniform vec3 c; varying vec3 vW;
+      #include <fog_pars_fragment>
+      void main(){ vec2 p = vW.xz*k;
+        float w = sin(p.x*1.7+t*1.3)*sin(p.y*1.3-t*1.1) + .5*sin((p.x+p.y)*3.1+t*2.) + .3*sin(p.x*5.3-p.y*4.1+t*2.7);
+        vec3 col = c*(.85+.18*w) + vec3(.55,.65,.7)*smoothstep(1.25,1.6,w)*.5;
+        gl_FragColor = vec4(col,o);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+        #include <fog_fragment>
+      }`
+  });
+  return m;
+}
+
+// glowing animated line material for tubes (rivers / routes)
+function flowMat(color, glow, dash = 0, speed = 1, opacity = 1) {
+  return new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { t: { value: 0 }, c: { value: new THREE.Color(color) }, g: { value: new THREE.Color(glow) }, d: { value: dash }, sp: { value: speed }, o: { value: opacity } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+    fragmentShader: `uniform float t,d,sp,o; uniform vec3 c,g; varying vec2 vUv;
+      void main(){ float s = sin(vUv.x*240.-t*4.*sp)*.5+.5; vec3 col = mix(c,g,smoothstep(.75,1.,s));
+        float a = o; if(d>0.){ float f = fract(vUv.x*d - t*.6*sp); if(f>.55) discard; a *= smoothstep(0.,.1,f); }
+        gl_FragColor = vec4(col*a, a); }`
+  });
+}
+
+// soft round sprite texture
+function softTex(size = 128, inner = 'rgba(255,255,255,1)', outer = 'rgba(255,255,255,0)') {
+  const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d');
+  const gr = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gr.addColorStop(0, inner); gr.addColorStop(1, outer); g.fillStyle = gr; g.fillRect(0, 0, size, size);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
+// smoke emitters ------------------------------------------------------------------
+function smokeSystem(scene, color = 0xdddddd, size = 1.5, rise = 1.2, life = 5, opacity = .35) {
+  const tex = softTex(64, 'rgba(255,255,255,.9)', 'rgba(255,255,255,0)');
+  const parts = []; const emitters = [];
+  return {
+    add(pos, n = 10) {
+      emitters.push(pos);
+      for (let i = 0; i < n; i++) {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color, transparent: true, depthWrite: false, opacity: 0 }));
+        sp.userData = { e: pos, age: Math.random() * life, dx: (Math.random() - .5) * .3 };
+        scene.add(sp); parts.push(sp);
+      }
+    },
+    update(dt) {
+      for (const p of parts) {
+        const u = p.userData; u.age += dt; if (u.age > life) u.age -= life;
+        const k = u.age / life;
+        p.position.set(u.e.x + u.dx * k * 4 + k * rise * .8, u.e.y + k * rise * 3, u.e.z + u.dx * k * 2);
+        const s = size * (.4 + k * 1.6); p.scale.set(s, s, s);
+        p.material.opacity = opacity * Math.sin(k * PI);
+      }
+    }
+  };
+}
+
+// polygon helpers --------------------------------------------------------------------
+function inPoly(x, z, poly) {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if (((a.y > z) !== (b.y > z)) && (x < (b.x - a.x) * (z - a.y) / (b.y - a.y) + a.x)) c = !c;
+  }
+  return c;
+}
+function centroid(poly) { const c = new THREE.Vector2(); poly.forEach(p => c.add(p)); return c.multiplyScalar(1 / poly.length); }
+function offsetPoly(poly, d) {
+  const c = centroid(poly);
+  return poly.map(p => { const v = p.clone().sub(c); const l = v.length(); return c.clone().add(v.multiplyScalar((l + d) / l)); });
+}
+function distSeg(px, pz, a, b) {
+  const dx = b.x - a.x, dz = b.y - a.y; const t = clamp(((px - a.x) * dx + (pz - a.y) * dz) / (dx * dx + dz * dz), 0, 1);
+  return Math.hypot(px - (a.x + dx * t), pz - (a.y + dz * t));
+}
+// shape in XZ plane -> horizontal mesh geometry (shape y = -z)
+function shapeXZ(pts) { const s = new THREE.Shape(); pts.forEach((p, i) => i ? s.lineTo(p.x, -p.y) : s.moveTo(p.x, -p.y)); s.closePath(); return s; }
+
+// ribbon geometry along XZ polyline
+function ribbon(points, width, y = 0.02) {
+  const pos = [], uv = [], idx = []; let acc = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i], a = points[Math.max(0, i - 1)], b = points[Math.min(points.length - 1, i + 1)];
+    const dx = b.x - a.x, dz = b.y - a.y, l = Math.hypot(dx, dz) || 1; const nx = -dz / l, nz = dx / l;
+    const w = (typeof width === 'function' ? width(i / (points.length - 1)) : width) / 2;
+    if (i) acc += p.distanceTo(points[i - 1]);
+    pos.push(p.x + nx * w, y, p.y + nz * w, p.x - nx * w, y, p.y - nz * w); uv.push(acc, 0, acc, 1);
+    if (i) { const k = i * 2; idx.push(k - 2, k - 1, k, k - 1, k + 1, k); }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); return g;
+}
+function smoothPath(pts, n = 200) { // Vector2[] -> Vector2[] via catmull
+  const c = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(p.x, 0, p.y)));
+  return c.getSpacedPoints(n).map(v => new THREE.Vector2(v.x, v.z));
+}
+
+// noisy rock geometry ---------------------------------------------------------------
+function rockGeo(w, h, d, seed = 1, round = .5, rough = .08, seg = 6) {
+  const g = new THREE.BoxGeometry(w, h, d, seg, seg + 2, seg);
+  const p = g.attributes.position; const v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    // round the top corners
+    const ty = (v.y + h / 2) / h;
+    const sx = v.x / (w / 2), sz = v.z / (d / 2);
+    const r = Math.max(0, ty - (1 - round)) / round;
+    const shrink = 1 - .35 * r * r * (Math.abs(sx) + Math.abs(sz)) * .5;
+    v.x *= shrink; v.z *= shrink;
+    if (ty > .99) { v.y -= h * .1 * round * (sx * sx + sz * sz) * .5; }
+    const n = (fbm(v.x * 3 + seed * 7.1, v.y * 3 + v.z * 2.3 + seed, 3) - .5) * rough;
+    v.x += n * w; v.y += n * h * .5; v.z += n * d;
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals(); return g;
+}
+
+// ============================================================================
+//  PROCEDURAL TEXTURES (canvas)
+// ============================================================================
+const TEX = {};
+function canvasTex(w, h, draw, repeat = 1, srgb = true) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); draw(g, w, h);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat, repeat);
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+function speckle(g, w, h, amp, seed = 1) {
+  srand(seed); const d = g.getImageData(0, 0, w, h);
+  for (let i = 0; i < d.data.length; i += 4) { const n = (rnd() - .5) * amp; d.data[i] += n; d.data[i + 1] += n; d.data[i + 2] += n * .9; }
+  g.putImageData(d, 0, 0);
+}
+function blotches(g, w, h, n, col, rmin, rmax, seed = 2) {
+  srand(seed);
+  for (let i = 0; i < n; i++) {
+    const x = rnd() * w, y = rnd() * h, r = R(rmin, rmax);
+    for (const [ox, oy] of [[0, 0], [w, 0], [-w, 0], [0, h], [0, -h]]) {
+      const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+      gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+    }
+  }
+}
+// mud brick / pakhsa walls
+function texMud(base = '#b8916a') {
+  return canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    blotches(g, w, h, 30, 'rgba(90,60,30,.12)', 10, 40, 3); blotches(g, w, h, 20, 'rgba(255,240,210,.12)', 10, 40, 4);
+    speckle(g, w, h, 26, 5);
+    g.strokeStyle = 'rgba(70,45,22,.30)'; g.lineWidth = 2;
+    for (let y = 0; y < h; y += 16) {
+      g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+      const off = (y / 16) % 2 ? 0 : 16;
+      for (let x = off; x < w; x += 32) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 16); g.stroke(); }
+    }
+  });
+}
+function texBrick() { // fired brick for mosques/mausolea
+  return canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#9a6b45'; g.fillRect(0, 0, w, h);
+    srand(9);
+    for (let y = 0; y < h; y += 12) { const off = (y / 12) % 2 ? 0 : 14; for (let x = -off; x < w; x += 28) { const l = R(-18, 18); g.fillStyle = `rgb(${190 + l},${140 + l},${95 + l * .8})`; g.fillRect(x + 1, y + 1, 26, 10); } }
+    speckle(g, w, h, 18, 10);
+  });
+}
+function texSand(base = '#c9a877', dark = 'rgba(120,90,50,.18)', light = 'rgba(255,240,210,.15)', seed = 1) {
+  return canvasTex(512, 512, (g, w, h) => {
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    blotches(g, w, h, 60, dark, 20, 70, seed); blotches(g, w, h, 50, light, 20, 70, seed + 1);
+    speckle(g, w, h, 30, seed + 2);
+  });
+}
+function texSteppe(base = '#a89468', seed = 11) {
+  return canvasTex(512, 512, (g, w, h) => {
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    blotches(g, w, h, 70, 'rgba(90,80,45,.25)', 10, 50, seed); blotches(g, w, h, 40, 'rgba(230,215,170,.18)', 20, 80, seed + 1);
+    speckle(g, w, h, 34, seed + 2);
+    srand(seed + 3); g.strokeStyle = 'rgba(70,60,35,.35)'; g.lineWidth = 1;
+    for (let i = 0; i < 900; i++) { const x = rnd() * w, y = rnd() * h; g.beginPath(); g.moveTo(x, y); g.lineTo(x + R(-3, 3), y - R(2, 6)); g.stroke(); }
+  });
+}
+// Mangystau limestone / shell rock with pores and lichen
+function texLime(base = '#dccdaa', blocks = false, seed = 21, lichen = .5) {
+  return canvasTex(512, 512, (g, w, h) => {
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    blotches(g, w, h, 40, 'rgba(120,100,70,.16)', 10, 60, seed);
+    blotches(g, w, h, Math.round(60 * lichen), 'rgba(205,150,40,.35)', 3, 14, seed + 1);
+    blotches(g, w, h, Math.round(40 * lichen), 'rgba(90,95,80,.25)', 3, 12, seed + 2);
+    speckle(g, w, h, 40, seed + 3);
+    srand(seed + 4); g.fillStyle = 'rgba(60,50,35,.35)';
+    for (let i = 0; i < 1400; i++) { const r = R(.5, 2); g.beginPath(); g.arc(rnd() * w, rnd() * h, r, 0, TAU); g.fill(); }
+    if (blocks) {
+      g.strokeStyle = 'rgba(80,65,45,.45)'; g.lineWidth = 2.5; srand(seed + 5);
+      for (let y = 0; y < h; y += 64) {
+        g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+        let x = R(0, 60); while (x < w) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 64); g.stroke(); x += R(70, 140); }
+      }
+    }
+  });
+}
+function texChalk() {
+  return canvasTex(256, 512, (g, w, h) => {
+    srand(31);
+    for (let y = 0; y < h; y += 2) { const v = fbm(0, y * .03, 3); const c = 200 + v * 50; g.fillStyle = `rgb(${c + 10},${c + 2},${c - 18})`; g.fillRect(0, y, w, 2); }
+    blotches(g, w, h, 30, 'rgba(160,130,90,.2)', 10, 40, 32); speckle(g, w, h, 20, 33);
+  });
+}
+function texField(c1, c2) {
+  return canvasTex(128, 128, (g, w, h) => {
+    g.fillStyle = c1; g.fillRect(0, 0, w, h); g.fillStyle = c2;
+    for (let x = 0; x < w; x += 8) g.fillRect(x, 0, 4, h);
+    speckle(g, w, h, 30, 41);
+  });
+}
+function texFelt() {
+  return canvasTex(256, 128, (g, w, h) => {
+    g.fillStyle = '#efe6d2'; g.fillRect(0, 0, w, h); speckle(g, w, h, 20, 51);
+    g.fillStyle = '#8b2a1f'; g.fillRect(0, h * .78, w, h * .08);
+    g.strokeStyle = '#8b2a1f'; g.lineWidth = 3;
+    for (let x = 0; x < w; x += 32) { g.beginPath(); g.moveTo(x, h * .78); g.quadraticCurveTo(x + 8, h * .62, x + 16, h * .72); g.quadraticCurveTo(x + 24, h * .62, x + 32, h * .78); g.stroke(); }
+  }, 1);
+}
+// Kazakh ornament band (qoshqar muiz-like)
+function drawOrnament(g, x0, y0, w, h, col = '#e8c374', lw = 3) {
+  g.save(); g.strokeStyle = col; g.lineWidth = lw; g.lineCap = 'round';
+  const s = h * .9; const n = Math.ceil(w / s);
+  for (let i = 0; i < n; i++) {
+    const cx = x0 + i * s + s / 2, cy = y0 + h / 2, r = s * .22;
+    g.beginPath(); g.moveTo(cx, cy + r * 1.6); g.lineTo(cx, cy);
+    g.bezierCurveTo(cx, cy - r * 1.8, cx - r * 2.2, cy - r * 1.8, cx - r * 2, cy - r * .2);
+    g.bezierCurveTo(cx - r * 1.9, cy + r * .8, cx - r * .8, cy + r * .6, cx - r * .9, cy - r * .2);
+    g.moveTo(cx, cy);
+    g.bezierCurveTo(cx, cy - r * 1.8, cx + r * 2.2, cy - r * 1.8, cx + r * 2, cy - r * .2);
+    g.bezierCurveTo(cx + r * 1.9, cy + r * .8, cx + r * .8, cy + r * .6, cx + r * .9, cy - r * .2);
+    g.stroke();
+  }
+  g.beginPath(); g.moveTo(x0, y0 + 2); g.lineTo(x0 + w, y0 + 2); g.moveTo(x0, y0 + h - 2); g.lineTo(x0 + w, y0 + h - 2); g.stroke();
+  g.restore();
+}
+// Kayi-like tamga  (IYI form)
+function drawTamga(g, cx, cy, s, col = '#3a2a18', lw = 6) {
+  g.save(); g.strokeStyle = col; g.lineWidth = lw; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath();
+  g.moveTo(cx - s * .55, cy - s * .5); g.lineTo(cx - s * .55, cy + s * .5);
+  g.moveTo(cx + s * .55, cy - s * .5); g.lineTo(cx + s * .55, cy + s * .5);
+  g.moveTo(cx, cy + s * .5); g.lineTo(cx, cy);
+  g.moveTo(cx - s * .3, cy - s * .5); g.lineTo(cx, cy); g.lineTo(cx + s * .3, cy - s * .5);
+  g.stroke(); g.restore();
+}
+// carved stone face: inscription panels + interlace + tamga
+function texCarved(kind) {
+  return canvasTex(1024, 256, (g, w, h) => {
+    g.fillStyle = '#cfc2a2'; g.fillRect(0, 0, w, h); blotches(g, w, h, 40, 'rgba(110,90,60,.2)', 10, 50, 61);
+    blotches(g, w, h, 30, 'rgba(200,140,40,.3)', 3, 12, 62); speckle(g, w, h, 34, 63);
+    const groove = (fn) => { g.save(); g.strokeStyle = 'rgba(70,55,35,.85)'; g.lineWidth = 7; fn(); g.restore(); g.save(); g.strokeStyle = 'rgba(255,245,220,.35)'; g.lineWidth = 2; g.translate(-2, -2); fn(); g.restore(); };
+    if (kind === 'kulpytas') {
+      // inscription panel
+      groove(() => { g.strokeRect(300, 30, 420, 110); });
+      srand(64);
+      for (let k = 0; k < 4; k++) groove(() => {
+        const x = 320 + k * 100; g.beginPath(); g.moveTo(x, 120); g.bezierCurveTo(x + 10, 50, x + 40, 50, x + 50, 100);
+        g.moveTo(x + 55, 60); g.lineTo(x + 55, 125); g.moveTo(x + 62, 90); g.quadraticCurveTo(x + 80, 70, x + 88, 110); g.stroke();
+      });
+      // interlace band
+      groove(() => { g.strokeRect(300, 160, 420, 60); g.beginPath(); for (let x = 310; x < 710; x += 40) { g.moveTo(x, 210); g.bezierCurveTo(x + 10, 165, x + 30, 165, x + 40, 210); } g.stroke(); });
+      // round head ornament
+      groove(() => { g.beginPath(); g.arc(120, 128, 80, 0, TAU); g.moveTo(170, 128); g.arc(120, 128, 50, 0, TAU); g.stroke(); });
+      g.save(); drawTamga(g, 860, 120, 90, 'rgba(70,55,35,.9)', 9); g.restore();
+    } else if (kind === 'warrior') {
+      groove(() => {
+        const cx = w / 2; g.beginPath(); g.arc(cx, 60, 30, 0, TAU);
+        g.moveTo(cx, 90); g.lineTo(cx, 190); g.moveTo(cx - 60, 110); g.lineTo(cx, 140); g.lineTo(cx + 60, 110);
+        g.moveTo(cx + 60, 110); g.quadraticCurveTo(cx + 120, 170, cx + 70, 230); g.moveTo(cx - 40, 240); g.lineTo(cx, 190); g.lineTo(cx + 40, 240); g.stroke();
+      });
+    } else if (kind === 'tamga') {
+      g.save(); drawTamga(g, w / 2, h / 2, 170, 'rgba(60,45,30,.9)', 14); g.restore();
+    } else if (kind === 'saber') {
+      groove(() => { g.beginPath(); g.moveTo(80, 150); g.quadraticCurveTo(500, 190, 900, 90); g.lineTo(890, 120); g.quadraticCurveTo(500, 210, 90, 175); g.closePath(); g.moveTo(80, 120); g.lineTo(80, 200); g.stroke(); });
+    } else if (kind === 'lines') {
+      groove(() => { g.beginPath(); g.moveTo(w * .45, 40); g.lineTo(w * .5, 200); g.lineTo(w * .58, 40); g.moveTo(w * .5, 200); g.lineTo(w * .5, 240); g.stroke(); });
+    }
+  });
+}
+function texHerring() {
+  return canvasTex(256, 64, (g, w, h) => {
+    g.fillStyle = '#cbbd98'; g.fillRect(0, 0, w, h); speckle(g, w, h, 30, 71);
+    g.strokeStyle = 'rgba(70,55,35,.75)'; g.lineWidth = 3;
+    for (let x = 0; x < w; x += 16) { g.beginPath(); g.moveTo(x, 4); g.lineTo(x + 10, h / 2); g.lineTo(x, h - 4); g.stroke(); }
+    blotches(g, w, h, 12, 'rgba(200,140,40,.35)', 3, 9, 72);
+  });
+}
+function texRibs() { // horizontal grooves for sarcophagi
+  return canvasTex(128, 256, (g, w, h) => {
+    g.fillStyle = '#d4b48a'; g.fillRect(0, 0, w, h); speckle(g, w, h, 24, 81);
+    for (let y = 20; y < h; y += 40) { g.fillStyle = 'rgba(90,60,35,.5)'; g.fillRect(0, y, w, 5); g.fillStyle = 'rgba(255,240,215,.3)'; g.fillRect(0, y + 5, w, 2); }
+  });
+}
+function texTerracotta() {
+  return canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#b5683c'; g.fillRect(0, 0, w, h); speckle(g, w, h, 22, 91);
+    for (let y = 0; y < h; y += 6) { g.fillStyle = `rgba(80,40,20,${.04 + .04 * Math.sin(y)})`; g.fillRect(0, y, w, 2); }
+    g.fillStyle = '#6d2618'; g.fillRect(0, h * .55, w, 14); g.fillRect(0, h * .62, w, 4);
+    g.strokeStyle = '#6d2618'; g.lineWidth = 3;
+    for (let x = 0; x < w; x += 22) { g.beginPath(); g.moveTo(x, h * .5); g.quadraticCurveTo(x + 11, h * .4, x + 22, h * .5); g.stroke(); }
+  });
+}
+function texMarble() {
+  return canvasTex(512, 512, (g, w, h) => {
+    g.fillStyle = '#17131a'; g.fillRect(0, 0, w, h);
+    srand(101); g.strokeStyle = 'rgba(232,195,116,.10)';
+    for (let i = 0; i < 40; i++) { g.lineWidth = R(.5, 2); g.beginPath(); let x = rnd() * w, y = rnd() * h; g.moveTo(x, y); for (let k = 0; k < 8; k++) { x += R(-40, 60); y += R(-30, 30); g.lineTo(x, y); } g.stroke(); }
+    speckle(g, w, h, 10, 102);
+  });
+}
+function texLattice() {
+  return canvasTex(256, 128, (g, w, h) => {
+    g.fillStyle = '#efe6d2'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#9b6a3c'; g.lineWidth = 3;
+    for (let x = -h; x < w + h; x += 18) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x + h, h); g.moveTo(x + h, 0); g.lineTo(x, h); g.stroke(); }
+    g.fillStyle = '#8b2a1f'; g.fillRect(0, 0, w, 10); g.fillRect(0, h - 10, w, 10);
+  });
+}
+function texCoin() {
+  return canvasTex(256, 256, (g, w, h) => {
+    const gr = g.createRadialGradient(110, 100, 10, 128, 128, 128); gr.addColorStop(0, '#e2a868'); gr.addColorStop(1, '#8a5428');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h); speckle(g, w, h, 30, 111);
+    g.strokeStyle = 'rgba(70,35,15,.85)'; g.lineWidth = 4;
+    g.beginPath(); g.arc(128, 128, 110, 0, TAU); g.stroke(); g.beginPath(); g.arc(128, 128, 78, 0, TAU); g.stroke();
+    srand(112);
+    for (let a = 0; a < TAU; a += .32) { const x = 128 + Math.cos(a) * 94, y = 128 + Math.sin(a) * 94; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + R(-8, 8), y + R(-8, 8), x + Math.cos(a + 1.6) * 9, y + Math.sin(a + 1.6) * 9); g.stroke(); }
+    drawTamga(g, 128, 128, 80, 'rgba(70,35,15,.9)', 7);
+  }, 1);
+}
+
+// ============================================================================
+//  LIVING MAP OF KAZAKHSTAN
+// ============================================================================
+const KX = 2, KZ = 2.9, LON0 = 66, LAT0 = 47.5;
+const P = (lon, lat, y = 0) => new THREE.Vector3((lon - LON0) * KX, y, -(lat - LAT0) * KZ);
+const P2 = (lon, lat) => new THREE.Vector2((lon - LON0) * KX, -(lat - LAT0) * KZ); // x,z
+
+// simplified outline (lon,lat) – stylised for an educational map
+const ARAL = [[59.6, 43.55], [60.6, 43.9], [61.0, 44.6], [61.15, 45.25], [61.35, 45.65], [61.7, 46.1], [61.45, 46.6], [60.6, 46.75], [59.6, 46.6], [58.7, 46.3], [58.3, 45.7], [58.35, 45.35], [58.2, 44.9], [58.5, 44.2], [59.0, 43.7]];
+const KZ_OUT = [
+  [46.5, 48.4], [47.0, 49.2], [46.8, 49.9], [47.6, 50.4], [48.7, 50.6], [49.4, 51.1], [50.6, 51.7], [52.3, 51.8], [54.0, 51.2], [55.6, 50.6], [57.2, 50.9], [58.5, 51.1], [59.6, 50.6], [61.6, 51.2],
+  [61.0, 52.2], [60.9, 53.0], [61.4, 53.9], [63.0, 54.4], [65.2, 54.6], [67.0, 54.9], [69.2, 55.4], [70.8, 55.2], [71.2, 54.2], [73.0, 54.0], [73.7, 54.4], [76.0, 54.4], [76.8, 53.8], [77.9, 53.3], [79.0, 52.4],
+  [80.1, 50.8], [81.4, 50.9], [82.7, 50.8], [83.9, 50.3], [85.0, 49.9], [86.2, 49.5], [87.3, 49.2], [86.7, 48.5], [85.6, 48.1], [85.4, 47.1], [83.0, 47.2], [82.3, 45.6], [80.2, 45.0], [80.5, 44.0],
+  [80.3, 43.0], [80.2, 42.2], [79.2, 42.8], [77.5, 42.9], [75.7, 42.8], [74.3, 43.2], [73.5, 42.5], [71.8, 42.8], [70.9, 42.3], [70.0, 41.5], [69.0, 41.3], [68.6, 40.6], [68.0, 41.0], [66.6, 41.1],
+  [66.0, 42.0], [66.0, 42.9], [64.9, 43.7], [63.0, 43.9], [61.9, 44.4],
+  // notch around the northern Aral Sea
+  [61.15, 45.25], [61.35, 45.65], [61.7, 46.1], [61.45, 46.6], [60.6, 46.75], [59.6, 46.6], [58.7, 46.3], [58.3, 45.7], [58.35, 45.35],
+  [56.0, 45.0], [56.0, 41.3], [55.4, 41.3], [54.2, 42.3], [53.0, 42.1], [52.5, 41.8],
+  [52.8, 42.3], [52.0, 42.9], [51.4, 43.2], [51.2, 43.65], [51.0, 44.1], [50.3, 44.45], [50.8, 44.7], [51.3, 45.0], [51.6, 45.4], [52.6, 45.4], [53.2, 45.3], [53.1, 46.2], [52.0, 46.9], [51.0, 46.9], [50.0, 46.6], [49.2, 46.4], [48.6, 46.7], [48.0, 47.4], [47.2, 47.8]
+];
+const CASPIAN = [[49.2, 46.4], [50.0, 46.6], [51.0, 46.9], [52.0, 46.9], [53.1, 46.2], [53.2, 45.3], [52.6, 45.4], [51.6, 45.4], [51.3, 45.0], [50.8, 44.7], [50.3, 44.45], [51.0, 44.1], [51.2, 43.65], [51.4, 43.2], [52.0, 42.9], [52.8, 42.3], [52.5, 41.8], [52.9, 40.8], [53.6, 39.6], [53.9, 38.2], [53.0, 36.9], [51.0, 36.7], [49.0, 37.5], [48.9, 38.6], [49.4, 39.6], [49.6, 40.4], [49.0, 41.2], [48.2, 42.0], [47.5, 43.0], [47.3, 44.0], [46.8, 44.7], [47.3, 45.5], [47.9, 46.1], [48.6, 46.3]];
+const BALKHASH = [[73.5, 46.2], [74.3, 46.85], [75.3, 46.9], [76.5, 46.65], [77.6, 46.6], [78.7, 46.75], [79.25, 46.5], [79.1, 46.25], [78.0, 46.3], [76.7, 46.35], [75.3, 46.55], [74.6, 46.3], [74.0, 45.85]];
+const RIVERS = {
+  'Сырдария': [[68.6, 40.75], [68.05, 41.2], [67.95, 41.7], [68.1, 42.3], [68.15, 42.85], [67.9, 43.35], [67.65, 43.85], [67.3, 44.2], [66.7, 44.5], [66.0, 44.65], [65.5, 44.82], [64.7, 44.95], [63.8, 45.3], [63.0, 45.5], [62.1, 45.72], [61.7, 46.08]],
+  'Жаңадария': [[65.6, 44.75], [65.0, 44.4], [64.4, 44.0], [63.5, 43.75], [62.4, 43.6], [61.0, 43.85]],
+  'Қуаңдария': [[65.3, 44.8], [64.3, 44.62], [63.4, 44.58], [62.4, 44.55], [61.4, 44.75]],
+  'Арыс': [[70.3, 42.4], [69.5, 42.38], [68.8, 42.55], [68.25, 42.85]],
+  'Жайық': [[51.4, 51.3], [51.5, 50.0], [51.8, 48.5], [51.9, 47.0]],
+  'Ертіс': [[85.3, 48.0], [83.6, 48.8], [82.6, 49.9], [80.2, 50.4], [77.0, 52.3], [75.6, 53.6], [74.6, 54.4]],
+  'Іле': [[80.2, 43.9], [78.0, 44.0], [76.5, 44.6], [74.9, 45.9]],
+  'Шу': [[75.0, 43.0], [73.0, 43.7], [70.8, 44.6], [69.0, 45.3]],
+  'Есіл': [[68.0, 50.3], [70.5, 51.2], [71.5, 51.15], [69.3, 53.2], [69.2, 54.9]]
+};
+const RANGES = [ // mountain chains [points], height
+  [[[70.4, 42.6], [72.5, 42.7], [74.5, 42.95], [76.5, 42.95], [78.5, 42.95], [80.1, 42.6]], 1.8],
+  [[[78.6, 44.9], [80.0, 45.1], [81.8, 45.3]], 1.4],
+  [[[84.0, 49.0], [85.4, 49.3], [86.8, 49.0]], 1.6],
+  [[[67.7, 44.2], [68.6, 43.6], [69.5, 43.1], [70.4, 42.75]], .8],
+  [[[82.0, 47.4], [84.5, 47.5]], .9],
+  [[[73.0, 49.3], [75.5, 49.6]], .55]
+];
+
+function mapTexture(minX, maxX, minY, maxY) {
+  const W = 1800, H = Math.round(W * (maxY - minY) / (maxX - minX));
+  const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+  const img = g.createImageData(W, H); const d = img.data;
+  const toLL = (px, py) => { const x = minX + px / W * (maxX - minX), y = maxY - py / H * (maxY - minY); return [x / KX + LON0, y / KZ + LAT0]; };
+  const rect = (lon, lat, a, b, c2, d2, f) => smooth(0, f, Math.min(lon - a, b - lon, lat - c2, d2 - lat));
+  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+    const [lon, lat] = toLL(px, py); const n = fbm(lon * 1.3, lat * 1.3, 4), n2 = fbm(lon * 6, lat * 6, 2);
+    const t = smooth(44, 53, lat + (n - .5) * 2.5);
+    let r = lerp(206, 112, t), gg = lerp(176, 132, t), b = lerp(116, 70, t);
+    const sand = Math.max(rect(lon, lat, 61.5, 67.5, 40.5, 44.6, 1.2), rect(lon, lat, 69, 73.6, 43.4, 45.4, .9), rect(lon, lat, 59.5, 63.2, 45.5, 47.4, .9), rect(lon, lat, 47, 50.5, 46.4, 48.6, 1), rect(lon, lat, 74, 77.3, 44.2, 45.6, .7)) * smooth(.35, .6, n);
+    r = lerp(r, 222, sand); gg = lerp(gg, 186, sand); b = lerp(b, 118, sand);
+    const ust = rect(lon, lat, 54.5, 58.2, 41.5, 45.6, 1.2) + rect(lon, lat, 50.5, 54, 43, 45.2, 1) * .7;
+    r = lerp(r, 214, ust * .7); gg = lerp(gg, 204, ust * .7); b = lerp(b, 176, ust * .7);
+    const v = (n2 - .5) * 34; const i = (py * W + px) * 4;
+    d[i] = r + v; d[i + 1] = gg + v; d[i + 2] = b + v * .8; d[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const xy = (lon, lat) => [((lon - LON0) * KX - minX) / (maxX - minX) * W, (maxY - (lat - LAT0) * KZ) / (maxY - minY) * H];
+  const stroke = (pts, w, col) => { g.strokeStyle = col; g.lineWidth = w; g.lineCap = g.lineJoin = 'round'; g.beginPath(); pts.forEach((p, k) => { const [x, y] = xy(p[0], p[1]); k ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); };
+  // green flood plains
+  for (const pts of Object.values(RIVERS)) { stroke(pts, 34, 'rgba(95,125,60,.18)'); stroke(pts, 16, 'rgba(85,120,55,.25)'); }
+  // mountains shading
+  for (const [pts] of RANGES) { stroke(pts, 60, 'rgba(90,80,70,.25)'); stroke(pts, 30, 'rgba(70,62,58,.3)'); }
+  // Oghuz realm highlight
+  const oghuz = [[50.0, 44.0], [52.5, 46.6], [56.5, 47.6], [60.5, 48.2], [64.5, 47.2], [67.6, 45.6], [69.3, 43.6], [68.6, 42.3], [66.5, 42.8], [62.5, 43.2], [58.0, 43.0], [54.0, 42.5], [51.0, 43.0]];
+  g.fillStyle = 'rgba(232,170,60,.16)'; g.strokeStyle = 'rgba(190,120,30,.55)'; g.lineWidth = 3; g.setLineDash([14, 10]);
+  g.beginPath(); oghuz.forEach((p, k) => { const [x, y] = xy(p[0], p[1]); k ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); g.fill(); g.stroke(); g.setLineDash([]);
+  // graticule
+  g.strokeStyle = 'rgba(60,40,20,.13)'; g.lineWidth = 1.5;
+  for (let lo = 45; lo <= 90; lo += 5) stroke([[lo, 38], [lo, 58]], 1.2, 'rgba(60,40,20,.13)');
+  for (let la = 40; la <= 56; la += 5) stroke([[44, la], [90, la]], 1.2, 'rgba(60,40,20,.13)');
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+
+function buildMap() {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x060912);
+  scene.fog = new THREE.FogExp2(0x0b1020, 0.0062);
+  const anim = []; const clickables = [];
+  const TOP = 0.68;
+
+  scene.add(new THREE.HemisphereLight(0xc8d8ff, 0x3a2a14, .8));
+  const sun = new THREE.DirectionalLight(0xffe0b0, 2.2); sun.position.set(-40, 70, 30); sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 40, bottom: -40, near: 1, far: 200 }); sun.shadow.bias = -0.0008;
+  scene.add(sun);
+  const rim = new THREE.DirectionalLight(0x6fa8ff, .5); rim.position.set(50, 30, -40); scene.add(rim);
+
+  // ground beyond Kazakhstan
+  const gtex = texSand('#2a2a2c', 'rgba(0,0,0,.25)', 'rgba(120,110,90,.08)', 201); gtex.repeat.set(30, 30);
+  const ground = mesh(new THREE.PlaneGeometry(900, 900), mat(0x3a3530, { map: gtex, roughness: 1 }), 0, -0.02, 0, false, true);
+  ground.rotation.x = -PI / 2; scene.add(ground);
+  // neighbouring lands faint tint around
+  const grat = []; for (let lo = 40; lo <= 95; lo += 5) grat.push(P(lo, 34, .01), P(lo, 60, .01)); for (let la = 35; la <= 60; la += 5) grat.push(P(38, la, .01), P(95, la, .01));
+  scene.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(grat), new THREE.LineBasicMaterial({ color: 0x8a7650, transparent: true, opacity: .18 })));
+
+  // Kazakhstan slab
+  const outline = KZ_OUT.map(([lo, la]) => new THREE.Vector2((lo - LON0) * KX, (la - LAT0) * KZ));
+  const shape = new THREE.Shape(outline);
+  shape.holes.push(new THREE.Path(BALKHASH.map(([lo, la]) => new THREE.Vector2((lo - LON0) * KX, (la - LAT0) * KZ))));
+  let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9; outline.forEach(p => { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); });
+  const mtex = mapTexture(minX, maxX, minY, maxY);
+  mtex.repeat.set(1 / (maxX - minX), 1 / (maxY - minY)); mtex.offset.set(-minX / (maxX - minX), -minY / (maxY - minY));
+  const kgeo = new THREE.ExtrudeGeometry(shape, { depth: .6, bevelEnabled: true, bevelThickness: .08, bevelSize: .08, bevelSegments: 2, curveSegments: 4 });
+  kgeo.rotateX(-PI / 2);
+  const kz = new THREE.Mesh(kgeo, [mat(0xffffff, { map: mtex, roughness: .95 }), mat(0x5a3d1c, { roughness: .6, metalness: .4 })]);
+  kz.position.y = 0; kz.receiveShadow = true; kz.castShadow = true; scene.add(kz);
+  // golden border glow
+  const bpts = KZ_OUT.map(([lo, la]) => P(lo, la, TOP + .02)); bpts.push(bpts[0].clone());
+  const bcurve = new THREE.CatmullRomCurve3(bpts, false, 'catmullrom', 0);
+  const border = new THREE.Mesh(new THREE.TubeGeometry(bcurve, 900, .07, 5, false), flowMat(0xc8923a, 0xfff0c0, 0, .3)); scene.add(border); anim.push(border.material);
+
+  // waters
+  const wm = waterMat(0x1d5f80, .93, .35); anim.push(wm);
+  const mkWater = (pts, y) => { const s = new THREE.Shape(pts.map(([lo, la]) => new THREE.Vector2((lo - LON0) * KX, (la - LAT0) * KZ))); const g = new THREE.ShapeGeometry(s, 8); g.rotateX(-PI / 2); const m = new THREE.Mesh(g, wm); m.position.y = y; scene.add(m); return m; };
+  mkWater(CASPIAN, .25); mkWater(ARAL, .25); mkWater(BALKHASH, .3);
+
+  // rivers (glowing tubes)
+  const rivMat = flowMat(0x2f9ccf, 0xc8f4ff, 0, 1, .9); anim.push(rivMat);
+  for (const [name, pts] of Object.entries(RIVERS)) {
+    const curve = new THREE.CatmullRomCurve3(pts.map(([lo, la]) => P(lo, la, TOP + .03)));
+    const big = name === 'Сырдария';
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve, pts.length * 20, big ? .16 : .08, 6, false), rivMat));
+  }
+
+  // mountains (instanced cones)
+  srand(301);
+  const mGeo = new THREE.ConeGeometry(1, 1, 6, 1); mGeo.translate(0, .5, 0);
+  const cones = []; for (const [pts, hgt] of RANGES) {
+    const curve = new THREE.CatmullRomCurve3(pts.map(([lo, la]) => P(lo, la, 0)));
+    const n = Math.round(curve.getLength() * 2.2);
+    for (let i = 0; i < n; i++) { const p = curve.getPointAt(i / n); for (let k = 0; k < 6; k++) cones.push([p.x + R(-1.3, 1.3), p.z + R(-1.1, 1.1), hgt * R(.35, 1.1), R(.35, .85)]); }
+  }
+  const mIM = new THREE.InstancedMesh(mGeo, mat(0x6c6258, { flatShading: true, roughness: 1 }), cones.length);
+  const sIM = new THREE.InstancedMesh(mGeo, mat(0xf4f1ea, { flatShading: true, roughness: .8 }), cones.length);
+  const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), V = new THREE.Vector3();
+  let si = 0;
+  cones.forEach(([x, z, h, r], i) => {
+    Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), R(0, TAU));
+    M4.compose(V.set(x, TOP - .05, z), Q, S.set(r, h, r)); mIM.setMatrixAt(i, M4);
+    if (h > .9) { M4.compose(V.set(x, TOP - .05 + h * .62, z), Q, S.set(r * .38, h * .38, r * .38)); sIM.setMatrixAt(si++, M4); }
+  });
+  sIM.count = si; mIM.castShadow = true; mIM.receiveShadow = true; scene.add(mIM, sIM);
+
+  // geo labels
+  const geo = [['Каспий теңізі', 50.2, 43.0], ['Арал теңізі', 59.9, 45.2], ['Балқаш', 76.3, 46.0], ['Сырдария', 64.4, 45.35], ['Жаңадария', 63.0, 43.55], ['Қаратау', 69.3, 43.6], ['Үстірт', 56.8, 43.6], ['Қызылқұм', 64.5, 42.3], ['Маңғыстау', 52.5, 44.25], ['ХОРЕЗМ', 60.4, 41.7], ['ЕДІЛ БОЙЫ', 46.3, 47.6], ['МАУЕРАННАХР', 67.6, 40.0], ['ДЕШТІ ҚЫПШАҚ', 66.5, 50.2]];
+  for (const [t, lo, la] of geo) { const l = label(t, 'geo'); l.position.copy(P(lo, la, TOP + .3)); scene.add(l); }
+  const realm = label('ОҒЫЗ ЖАБҒУЛЫҒЫ · IX–XI ғғ.', 'geo'); Object.assign(realm.element.style, { color: 'rgba(255,215,140,.8)', fontSize: '15px', letterSpacing: '.3em', fontFamily: 'Noto Serif,serif' }); realm.position.copy(P(58.5, 47.4, TOP + .4)); scene.add(realm);
+  const cities = [['Қызылорда', 65.5, 44.85], ['Түркістан', 68.25, 43.3], ['Ақтау', 51.2, 43.65], ['Астана', 71.45, 51.17], ['Алматы', 76.9, 43.25], ['Қазалы', 62.1, 45.76], ['Атырау', 51.9, 47.1], ['Шымкент', 69.6, 42.32], ['Бейнеу', 55.1, 45.32]];
+  for (const [t, lo, la] of cities) { const l = label(t, 'geo city'); l.position.copy(P(lo, la, TOP + .15)); scene.add(l); }
+  for (const [lo, la] of cities) { const d = mesh(new THREE.SphereGeometry(.09, 8, 6), basic(0xffffff, { transparent: true, opacity: .5 }), 0, 0, 0, false, false); d.position.copy(P(lo, la, TOP + .05)); scene.add(d); }
+
+  // site markers
+  const markers = {}; const beamTex = (() => { const c = document.createElement('canvas'); c.width = 4; c.height = 128; const g = c.getContext('2d'); const gr = g.createLinearGradient(0, 0, 0, 128); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,255,255,1)'); g.fillStyle = gr; g.fillRect(0, 0, 4, 128); return new THREE.CanvasTexture(c); })();
+  const side = { jankent: 'L', zhuara: 'R', jent: 'R', kuyuk: 'L', asanas: 'R', sauran: 'L', sutkent: 'L', karnak: 'R', otrar: 'R', sygnak: 'R', kenti: 'R', beyneu: 'R' };
+  const ph = { sutkent: 2.6, sygnak: 2.2, karnak: 1.3, sauran: 1.6, otrar: 1.4, jankent: 2.0, zhuara: 1.5, kuyuk: 1.7, jent: 1.9, asanas: 1.6, kenti: 1.8, beyneu: 1.8 };
+  C.slides.forEach((s, idx) => {
+    if (s.kind !== 'site') return;
+    const teal = s.type === 'necropolis'; const col = teal ? 0x5fd4d0 : 0xe8c374;
+    const g = new THREE.Group(); g.position.copy(P(s.lon, s.lat, TOP)); scene.add(g);
+    const h = ph[s.id] || 1.6;
+    const pin = mesh(new THREE.CylinderGeometry(.045, .045, h, 6), mat(col, { emissive: col, emissiveIntensity: .6, metalness: .6, roughness: .3 }), 0, h / 2, 0); g.add(pin);
+    const gem = mesh(new THREE.OctahedronGeometry(.3), mat(col, { emissive: col, emissiveIntensity: .9, metalness: .7, roughness: .2 }), 0, h + .25, 0); g.add(gem);
+    const ring = mesh(new THREE.RingGeometry(.35, .5, 40), basic(col, { transparent: true, opacity: .8, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }), 0, .03, 0, false, false); ring.rotation.x = -PI / 2; g.add(ring);
+    const beam = mesh(new THREE.CylinderGeometry(.22, .22, 9, 16, 1, true), basic(col, { map: beamTex, transparent: true, opacity: .22, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }), 0, 4.5, 0, false, false); g.add(beam);
+    const hit = mesh(new THREE.SphereGeometry(1.1, 8, 6), new THREE.MeshBasicMaterial({ visible: false }), 0, h / 2 + .3, 0, false, false); g.add(hit);
+    hit.userData.onClick = () => UI.siteClick(idx); clickables.push(hit);
+    const lab = label(`<b>${s.num}</b><span>${shortName(s)}</span>`, 'mlabel' + (teal ? ' teal' : ''), () => UI.siteClick(idx));
+    if (side[s.id] === 'L') lab.element.style.flexDirection = 'row-reverse';
+    lab.position.set(0, h + .5, 0); g.add(lab);
+    markers[s.id] = { g, gem, ring, beam, lab, h, pos: g.position.clone() };
+  });
+
+  // caravan routes
+  const site = (id) => { const s = C.slides.find(x => x.id === id); return [s.lon, s.lat]; };
+  const routes = [
+    [[60.6, 41.6], site('kuyuk'), site('jent'), site('zhuara'), site('jankent'), [58.0, 46.9], site('beyneu'), [50.5, 47.6], [47.2, 48.3]],
+    [site('jankent'), site('zhuara'), [65.4, 44.95], site('asanas'), site('sygnak'), site('sutkent'), site('sauran'), site('karnak'), site('otrar'), [69.2, 41.4]],
+    [site('beyneu'), [53.0, 44.6], site('kenti')],
+    [site('beyneu'), [57.5, 43.2], [60.6, 41.6]]
+  ];
+  const routeMat = flowMat(0xd9a441, 0xfff3c4, 60, 1, .95); anim.push(routeMat);
+  const caravans = []; const cTex = softTex(64, 'rgba(255,240,200,1)', 'rgba(255,200,100,0)');
+  routes.forEach((r, ri) => {
+    const pts = []; for (let i = 0; i < r.length - 1; i++) { const a = P(r[i][0], r[i][1], TOP + .06), b = P(r[i + 1][0], r[i + 1][1], TOP + .06); for (let k = 0; k < 10; k++) { const v = a.clone().lerp(b, k / 10); v.y += Math.sin(k / 10 * PI) * .25; pts.push(v); } }
+    pts.push(P(r[r.length - 1][0], r[r.length - 1][1], TOP + .06));
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, pts.length * 6, .05, 4, false), routeMat);
+    tube.material = routeMat.clone(); tube.material.uniforms.d.value = curve.getLength() * 1.4; anim.push(tube.material); scene.add(tube);
+    for (let k = 0; k < 3; k++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: cTex, color: 0xffe7a8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      sp.scale.set(.9, .9, .9); scene.add(sp); caravans.push({ sp, curve, t: k / 3 + ri * .1, speed: .012 + ri * .002 });
+    }
+  });
+
+  // fog particles + clouds + dust + stars
+  const fogTex = softTex(128, 'rgba(255,255,255,.55)', 'rgba(255,255,255,0)');
+  const FN = 900; const fpos = new Float32Array(FN * 3); const fvel = [];
+  srand(401);
+  for (let i = 0; i < FN; i++) { fpos[i * 3] = R(-55, 55); fpos[i * 3 + 1] = R(.9, 4.5); fpos[i * 3 + 2] = R(-30, 26); fvel.push(R(.15, .6)); }
+  const fgeo = new THREE.BufferGeometry(); fgeo.setAttribute('position', new THREE.BufferAttribute(fpos, 3));
+  const fog = new THREE.Points(fgeo, new THREE.PointsMaterial({ map: fogTex, size: 7, color: 0xd6dcea, transparent: true, opacity: .16, depthWrite: false, sizeAttenuation: true }));
+  scene.add(fog);
+  const cloudTex = canvasTex(256, 256, (g, w, h) => { for (let i = 0; i < 22; i++) { const x = R(50, 206), y = R(90, 166), r = R(25, 60); const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); } }, 1);
+  cloudTex.wrapS = cloudTex.wrapT = THREE.ClampToEdgeWrapping;
+  const clouds = []; for (let i = 0; i < 16; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, color: 0xdfe6f5, transparent: true, opacity: R(.18, .34), depthWrite: false })); sp.position.set(R(-70, 70), R(7, 13), R(-35, 30)); const s = R(18, 34); sp.scale.set(s, s * .55, 1); sp.userData.v = R(.4, 1.1); scene.add(sp); clouds.push(sp); }
+  const DN = 400; const dpos = new Float32Array(DN * 3); for (let i = 0; i < DN; i++) { dpos[i * 3] = R(-40, 10); dpos[i * 3 + 1] = R(.8, 6); dpos[i * 3 + 2] = R(-5, 22); }
+  const dgeo = new THREE.BufferGeometry(); dgeo.setAttribute('position', new THREE.BufferAttribute(dpos, 3));
+  const dust = new THREE.Points(dgeo, new THREE.PointsMaterial({ map: softTex(32), size: .35, color: 0xffd98a, transparent: true, opacity: .8, depthWrite: false, blending: THREE.AdditiveBlending })); scene.add(dust);
+  const SN = 1500; const spos = new Float32Array(SN * 3); for (let i = 0; i < SN; i++) { const th = R(0, TAU), ph2 = R(.05, 1.3), r = 700; spos[i * 3] = r * Math.sin(ph2) * Math.cos(th); spos[i * 3 + 1] = r * Math.cos(ph2) * .6 + 60; spos[i * 3 + 2] = r * Math.sin(ph2) * Math.sin(th); }
+  const sgeo = new THREE.BufferGeometry(); sgeo.setAttribute('position', new THREE.BufferAttribute(spos, 3));
+  scene.add(new THREE.Points(sgeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: .7, fog: false })));
+
+  let active = null;
+  return {
+    name: 'map', scene, clickables, markers,
+    view: { pos: new THREE.Vector3(3, 64, 40), target: new THREE.Vector3(3, 0, -12) },
+    limits: { min: 5, max: 160, maxPolar: 1.32 },
+    setActive(id) { active = id; for (const [k, m] of Object.entries(markers)) m.lab.element.classList.toggle('active', k === id); },
+    update(dt, t) {
+      anim.forEach(m => m.uniforms.t.value = t);
+      for (const [k, m] of Object.entries(markers)) {
+        const a = k === active; const s = 1 + ((t * .8) % 1) * (a ? 2.4 : 1.4);
+        m.ring.scale.set(s, s, s); m.ring.material.opacity = (1 - (t * .8) % 1) * (a ? 1 : .7);
+        m.gem.rotation.y = t * 1.5; m.gem.position.y = m.h + .25 + Math.sin(t * 2 + m.pos.x) * .08;
+        m.beam.material.opacity = a ? .45 : .16; m.gem.scale.setScalar(a ? 1.5 : 1);
+      }
+      for (const c of caravans) { c.t = (c.t + dt * c.speed) % 1; c.sp.position.copy(c.curve.getPointAt(c.t)); c.sp.position.y += .12; }
+      const fp = fgeo.attributes.position; for (let i = 0; i < FN; i++) { let x = fp.getX(i) + fvel[i] * dt; if (x > 55) x = -55; fp.setX(i, x); fp.setY(i, fp.getY(i) + Math.sin(t * .5 + i) * .002); } fp.needsUpdate = true;
+      for (const c of clouds) { c.position.x += c.userData.v * dt; if (c.position.x > 75) c.position.x = -75; }
+      const dp = dgeo.attributes.position; for (let i = 0; i < DN; i++) { dp.setY(i, dp.getY(i) + Math.sin(t + i * 1.7) * .004); dp.setX(i, dp.getX(i) + Math.cos(t * .3 + i) * .003); } dp.needsUpdate = true;
+      dust.material.opacity = .5 + .3 * Math.sin(t * 1.3);
+    }
+  };
+}
+function shortName(s) {
+  const map = { kenti: 'Кенті-баба · Үштам · Қаңға-баба', beyneu: 'Бейнеу · Гүндіз Алп' };
+  return map[s.id] || s.title.split(' (')[0];
+}
+
+// ============================================================================
+//  PROCEDURAL MEDIEVAL CITY  (1 unit = 10 m)
+// ============================================================================
+const CITY_CFG = {
+  jankent: { seed: 11, shape: 'rect', W: 58, D: 48, wallH: 1.0, thick: 1.0, towerEvery: 2, gates: [.12, .62], citadel: { x: -17, z: -13, w: 18, d: 14, h: 1.1 }, workshop: [14, 12], yurts: [-48, -30, 16], river: [[-120, 44], [-60, 38], [0, 46], [60, 40], [120, 50]], fields: [[-40, 22, 60, 12]], caravanFrom: [110, -10], banner: true, tobe: .45 },
+  jent: { seed: 22, shape: 'rect', W: 40, D: 36, wallH: .9, thick: .9, towerEvery: 2, gates: [.12, .62], citadel: { x: 11, z: -9, w: 12, d: 10, h: .9 }, mosque: [0, 2], minaret: true, river: [[-45, -120], [-38, -40], [-42, 20], [-34, 120]], fields: [[-30, 26, 26, 12]], caravanFrom: [80, 60], yurts: [40, -40, 10], tobe: .4 },
+  zhuara: { seed: 33, shape: 'rect', W: 26, D: 22, wallH: .75, thick: .8, towerEvery: 2, gates: [.12], citadel: null, river: [[-100, 30], [-40, 26], [20, 34], [100, 28]], fields: [[-22, 16, 40, 8]], yurts: [-30, -24, 22], caravanFrom: [70, -40], workshop: [5, 4], tobe: .35 },
+  asanas: { seed: 44, shape: 'rect', W: 36, D: 30, wallH: .9, thick: .9, towerEvery: 2, gates: [.12, .62], citadel: { x: -9, z: -7, w: 11, d: 9, h: .9 }, moat: true, river: [[-120, 48], [-40, 44], [30, 52], [120, 46]], fields: [[-20, 30, 50, 10]], caravanFrom: [90, -50], yurts: [36, -36, 10], tobe: .4 },
+  kuyuk: { seed: 55, shape: 'round', W: 30, D: 26, wallH: .9, thick: 1.1, towerEvery: 2, gates: [.25], citadel: { x: 0, z: -2, w: 9, d: 8, h: .8 }, marsh: true, tobe: .6, yurts: [40, 30, 8] },
+  sauran: { seed: 66, shape: 'oval', W: 72, D: 54, wallH: 1.1, thick: 1.2, towerEvery: 3, gates: [0, .5], mosque: [0, 0], madrasa: true, minaret: true, farMinaret: [70, -40], karez: [[0, -110], [0, -30]], fields: [[-50, 34, 100, 14]], caravanFrom: [140, 0], turq: true, tobe: .45 },
+  sygnak: { seed: 77, shape: 'rect', W: 36, D: 32, wallH: 1.0, thick: 1.0, towerEvery: 2, gates: [.12, .62], citadel: { x: 0, z: -2, w: 12, d: 10, h: 1.3 }, mosque: [-9, 9], minaret: true, mausoleum: [-48, 26, false], river: [[-120, -45], [-50, -40], [20, -50], [120, -42]], tobe: 1.4, caravanFrom: [90, 50], banner: true, yurts: [44, 30, 10] },
+  otrar: { seed: 88, shape: 'poly', pts: [[-30, -18], [-6, -30], [26, -22], [32, 10], [8, 28], [-26, 20]], wallH: 1.1, thick: 1.1, towerEvery: 2, gates: [.05, .55], citadel: { x: 4, z: -12, w: 16, d: 11, h: 1.2 }, mosque: [-8, 6], minaret: true, workshop: [14, 10], bath: [-16, -6], mausoleum: [-62, 34, true], river: [[60, -120], [52, -40], [64, 30], [55, 120]], fields: [[-46, 36, 40, 12]], caravanFrom: [100, 60], turq: true, tobe: 1.0 },
+  sutkent: { seed: 99, shape: 'rect', W: 30, D: 26, wallH: .9, thick: .9, towerEvery: 2, gates: [.12, .62], citadel: { x: 8, z: -6, w: 9, d: 8, h: .8 }, hills: true, fields: [[-25, 22, 50, 14]], river: [[-110, 60], [-40, 52], [30, 62], [110, 55]], yurts: [-36, -30, 14], caravanFrom: [80, 40], tobe: .4 },
+  karnak: { seed: 111, shape: 'rect', W: 32, D: 28, wallH: .9, thick: .9, towerEvery: 2, gates: [.12, .62], workshop: [6, 6], workshopBig: true, mosque: [-6, -4], minaret: true, fields: [[-30, 24, 60, 12]], caravanFrom: [90, -20], river: [[-110, 50], [-30, 42], [40, 52], [110, 44]], tobe: .45 }
+};
+
+function cityPoly(cfg) {
+  if (cfg.shape === 'rect') { const w = cfg.W / 2, d = cfg.D / 2; return [new THREE.Vector2(-w, -d), new THREE.Vector2(w, -d), new THREE.Vector2(w, d), new THREE.Vector2(-w, d)]; }
+  if (cfg.shape === 'poly') return cfg.pts.map(([x, z]) => new THREE.Vector2(x, z));
+  const n = 40, out = []; for (let i = 0; i < n; i++) { const a = i / n * TAU; out.push(new THREE.Vector2(Math.cos(a) * cfg.W / 2 * (1 + .04 * Math.sin(a * 3)), Math.sin(a) * cfg.D / 2)); } return out;
+}
+function samplePerimeter(poly, step) {
+  const seg = []; let L = 0;
+  for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; const l = a.distanceTo(b); seg.push({ a, b, l, s: L }); L += l; }
+  const n = Math.max(8, Math.round(L / step)); const pts = [];
+  for (let i = 0; i < n; i++) {
+    const d = i / n * L; const sg = seg.find(s => d >= s.s && d < s.s + s.l) || seg[seg.length - 1];
+    const t = (d - sg.s) / sg.l; pts.push({ p: sg.a.clone().lerp(sg.b, t), d, t: d / L });
+  }
+  return { pts, L, corners: seg.map(s => s.s / L) };
+}
+
+// platform mound under a polygon
+function mound(poly, h, spread, m) {
+  const g = new THREE.ExtrudeGeometry(shapeXZ(poly), { depth: .05, bevelEnabled: true, bevelThickness: h, bevelSize: spread, bevelSegments: 4, curveSegments: 6 });
+  g.rotateX(-PI / 2); const o = new THREE.Mesh(g, m); o.receiveShadow = true; o.castShadow = true; return o;
+}
+
+function instanced(geo, m, list, cast = true) { // list of {p,r,s,c}
+  const im = new THREE.InstancedMesh(geo, m, Math.max(1, list.length)); const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), E = new THREE.Euler(), col = new THREE.Color();
+  list.forEach((it, i) => { E.set(it.rx || 0, it.r || 0, it.rz || 0); Q.setFromEuler(E); M.compose(it.p, Q, it.s); im.setMatrixAt(i, M); if (it.c !== undefined) im.setColorAt(i, col.set(it.c)); });
+  im.count = list.length; im.castShadow = cast; im.receiveShadow = true; return im;
+}
+const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+function camelGeo() {
+  const parts = [];
+  const add = (g, x, y, z, rz = 0, sx = 1, sy = 1, sz = 1) => { g.scale(sx, sy, sz); if (rz) g.rotateZ(rz); g.translate(x, y, z); parts.push(g); };
+  add(new THREE.SphereGeometry(1, 10, 8), 0, 1.5, 0, 0, 1.15, .55, .45);
+  add(new THREE.SphereGeometry(.42, 8, 6), -.38, 2.0, 0); add(new THREE.SphereGeometry(.42, 8, 6), .38, 2.0, 0);
+  add(new THREE.CylinderGeometry(.17, .22, 1.1, 6), 1.25, 1.95, 0, -.65);
+  add(new THREE.BoxGeometry(.6, .26, .26), 1.75, 2.35, 0);
+  for (const [x, z] of [[-.7, .25], [-.7, -.25], [.7, .25], [.7, -.25]]) add(new THREE.CylinderGeometry(.09, .07, 1.25, 5), x, .62, z);
+  return mergeGeometries(parts.map(g => g.toNonIndexed()));
+}
+function yurtGeos() {
+  const wall = new THREE.CylinderGeometry(1, 1, .75, 16, 1, true); wall.translate(0, .375, 0);
+  const roof = new THREE.SphereGeometry(1.04, 16, 6, 0, TAU, 0, PI * .36); roof.scale(1, .75, 1); roof.translate(0, .58, 0);
+  return { wall, roof };
+}
+
+function buildCity(slide) {
+  const cfg = CITY_CFG[slide.model]; srand(cfg.seed);
+  const scene = new THREE.Scene();
+  const sunDir = V3(-.5, .55, .35).normalize();
+  scene.add(skyDome(0x5d8fc7, 0xf3d6a6, sunDir));
+  scene.fog = new THREE.Fog(0xe9cfa2, 120, 420);
+  scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x8a6a40, .9));
+  const sun = new THREE.DirectionalLight(0xfff0d6, 2.6); sun.position.copy(sunDir).multiplyScalar(150); sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 10, far: 400 }); sun.shadow.bias = -0.0006; sun.shadow.normalBias = .03;
+  scene.add(sun);
+  const anim = []; const HS = {}; const recon = new THREE.Group(), ruin = new THREE.Group(); ruin.visible = false; scene.add(recon, ruin);
+  const smoke = smokeSystem(scene, 0xe8e2d8, 2.2, 1.6, 6, .3);
+
+  // materials
+  const mud = texMud(); mud.repeat.set(.5, .5);
+  const mWall = mat(0xffffff, { map: mud });
+  const mud2 = texMud('#c9a57a'); const mHouse = mat(0xffffff, { map: mud2 });
+  const mRuin = mat(0xd2b48a, { map: texSand('#c7a77c', 'rgba(110,80,45,.2)', 'rgba(255,240,210,.15)', 501) });
+  const brick = texBrick(); brick.repeat.set(.6, .6); const mBrick = mat(0xffffff, { map: brick });
+  const mTurq = mat(0x2fa7a4, { roughness: .35, metalness: .15 });
+  const mDark = mat(0x2a1d12, { roughness: 1 });
+
+  // ground with dunes
+  const gtex = texSand('#cfae7c', 'rgba(120,90,50,.2)', 'rgba(255,240,210,.18)', 502); gtex.repeat.set(60, 60);
+  const gg = new THREE.PlaneGeometry(800, 800, 160, 160); gg.rotateX(-PI / 2);
+  const gp = gg.attributes.position;
+  for (let i = 0; i < gp.count; i++) { const x = gp.getX(i), z = gp.getZ(i); const r = Math.hypot(x, z); gp.setY(i, (fbm(x * .015, z * .015, 4) - .45) * 7 * smooth(70, 160, r) + (cfg.hills && z < -60 ? Math.max(0, fbm(x * .02 + 9, z * .02, 4) - .3) * 60 * smooth(-60, -130, z) : 0)); }
+  gg.computeVertexNormals();
+  const ground = mesh(gg, mat(0xffffff, { map: gtex, roughness: 1 }), 0, 0, 0, false, true); scene.add(ground);
+  ground.userData.ground = true;
+
+  const poly = cityPoly(cfg); const tobe = cfg.tobe;
+  const tobeM = mound(poly, tobe, 4, mat(0xffffff, { map: gtex })); scene.add(tobeM);
+  const base = tobe + .05;
+
+  // ---- walls ------------------------------------------------------------
+  const per = samplePerimeter(poly, 2.2); const cen = centroid(poly);
+  const gw = 3.2; const isGate = (d) => cfg.gates.some(g => { const gd = g * per.L; let dd = Math.abs(d - gd); dd = Math.min(dd, per.L - dd); return dd < gw / 2 + .6; });
+  const walls = [], wallsR = [], merl = [], towers = [], towersR = [], caps = [];
+  const N = per.pts.length;
+  for (let i = 0; i < N; i++) {
+    const a = per.pts[i].p, b = per.pts[(i + 1) % N].p; const mid = a.clone().add(b).multiplyScalar(.5);
+    const dmid = (per.pts[i].d + (i + 1 < N ? per.pts[i + 1].d : per.L)) / 2;
+    if (isGate(dmid)) continue;
+    const len = a.distanceTo(b) + .25, ang = -Math.atan2(b.y - a.y, b.x - a.x);
+    walls.push({ p: V3(mid.x, base + cfg.wallH / 2, mid.y), r: ang, s: V3(len, cfg.wallH, cfg.thick) });
+    wallsR.push({ p: V3(mid.x, base + .05, mid.y), r: ang, s: V3(len, cfg.wallH * .55, cfg.thick * 2.6) });
+    const out = mid.clone().sub(cen).normalize();
+    for (const k of [-.25, .25]) { const q = mid.clone().add(new THREE.Vector2(Math.cos(-ang), Math.sin(-ang)).multiplyScalar(k * len)).add(out.clone().multiplyScalar(cfg.thick * .3)); merl.push({ p: V3(q.x, base + cfg.wallH + .12, q.y), r: ang, s: V3(.45, .26, cfg.thick * .4) }); }
+  }
+  for (let i = 0; i < N; i++) {
+    const pt = per.pts[i]; if (isGate(pt.d)) continue;
+    const corner = per.corners.some(c => Math.abs(c - pt.t) < .004);
+    if (i % cfg.towerEvery && !corner) continue;
+    const out = pt.p.clone().sub(cen).normalize().multiplyScalar(.45); const q = pt.p.clone().add(out);
+    const r = corner ? 1.15 : .9, h = cfg.wallH * 1.32;
+    towers.push({ p: V3(q.x, base + h / 2, q.y), s: V3(r, h, r) }); caps.push({ p: V3(q.x, base + h + .06, q.y), s: V3(r * 1.12, .12, r * 1.12) });
+    towersR.push({ p: V3(q.x, base, q.y), s: V3(r * 1.5, cfg.wallH * .7, r * 1.5) });
+  }
+  if (cfg.shape === 'rect' || cfg.shape === 'poly') poly.forEach(c => {
+    const q = c.clone().add(c.clone().sub(cen).normalize().multiplyScalar(.5)); const h = cfg.wallH * 1.4;
+    towers.push({ p: V3(q.x, base + h / 2, q.y), s: V3(1.25, h, 1.25) }); caps.push({ p: V3(q.x, base + h + .06, q.y), s: V3(1.4, .12, 1.4) }); towersR.push({ p: V3(q.x, base, q.y), s: V3(2, cfg.wallH * .8, 2) });
+  });
+  // gates
+  const gateObjs = [];
+  for (const g of cfg.gates) {
+    const d = g * per.L; const i = per.pts.findIndex(p => p.d >= d) % N; const p = per.pts[Math.max(0, i)].p; const nb = per.pts[(Math.max(0, i) + 1) % N].p;
+    const tang = nb.clone().sub(p).normalize(); const out = p.clone().sub(cen).normalize(); const ang = -Math.atan2(tang.y, tang.x);
+    for (const sgn of [-1, 1]) { const q = p.clone().add(tang.clone().multiplyScalar(sgn * (gw / 2 + .7))).add(out.clone().multiplyScalar(.5)); const h = cfg.wallH * 1.6; towers.push({ p: V3(q.x, base + h / 2, q.y), s: V3(1.3, h, 1.3) }); caps.push({ p: V3(q.x, base + h + .06, q.y), s: V3(1.45, .14, 1.45) }); towersR.push({ p: V3(q.x, base, q.y), s: V3(2, cfg.wallH * .9, 2) }); }
+    const lintel = mesh(box(gw + .6, .45, cfg.thick * 1.1), mWall, p.x, base + cfg.wallH * 1.0, p.y); lintel.rotation.y = ang; recon.add(lintel);
+    gateObjs.push({ p, out, ang });
+  }
+  HS.gate = V3(gateObjs[0].p.x, base + cfg.wallH * 2, gateObjs[0].p.y);
+  const towerGeo = new THREE.CylinderGeometry(1, 1.12, 1, 14); const unit = new THREE.BoxGeometry(1, 1, 1);
+  const ridgeGeo = new THREE.CylinderGeometry(.5, .5, 1, 9, 1); ridgeGeo.rotateZ(PI / 2); ridgeGeo.translate(0, 0, 0);
+  const halfRidge = ridgeGeo.clone(); // centered; we lower it so it looks eroded
+  recon.add(instanced(unit, mWall, walls), instanced(towerGeo, mWall, towers), instanced(unit, mWall, merl), instanced(new THREE.CylinderGeometry(1, 1, 1, 14), mWall, caps));
+  ruin.add(instanced(halfRidge, mRuin, wallsR), instanced(new THREE.SphereGeometry(.5, 10, 6, 0, TAU, 0, PI / 2), mRuin, towersR));
+  const wq = per.pts[Math.floor(N * .37)].p; HS.wall = V3(wq.x, base + cfg.wallH + 1.2, wq.y);
+
+  // ---- citadel -----------------------------------------------------------
+  let citBox = null;
+  if (cfg.citadel) {
+    const c = cfg.citadel; citBox = c;
+    const cp = [new THREE.Vector2(c.x - c.w / 2, c.z - c.d / 2), new THREE.Vector2(c.x + c.w / 2, c.z - c.d / 2), new THREE.Vector2(c.x + c.w / 2, c.z + c.d / 2), new THREE.Vector2(c.x - c.w / 2, c.z + c.d / 2)];
+    const cm = mound(cp, c.h, 2.2, mat(0xffffff, { map: gtex })); cm.position.y = base - .05; scene.add(cm);
+    const cb = base + c.h + .05;
+    const cper = samplePerimeter(cp, 1.8); const cw = [], ct = [], cr = [];
+    cper.pts.forEach((pt, i) => {
+      const a = pt.p, b = cper.pts[(i + 1) % cper.pts.length].p; const mid = a.clone().add(b).multiplyScalar(.5); const len = a.distanceTo(b) + .2, ang = -Math.atan2(b.y - a.y, b.x - a.x);
+      if (i === Math.floor(cper.pts.length * .62)) return; // citadel gate gap (south side)
+      cw.push({ p: V3(mid.x, cb + .4, mid.y), r: ang, s: V3(len, .8, .7) }); cr.push({ p: V3(mid.x, cb, mid.y), r: ang, s: V3(len, .45, 1.6) });
+    });
+    cp.forEach(q => ct.push({ p: V3(q.x, cb + .55, q.y), s: V3(.85, 1.1, .85) }));
+    recon.add(instanced(unit, mWall, cw), instanced(towerGeo, mWall, ct)); ruin.add(instanced(halfRidge, mRuin, cr));
+    // palace (orda)
+    const pw = c.w * .5, pd = c.d * .42;
+    recon.add(mesh(box(pw, .9, pd, 1.5), mBrick, c.x, cb + .45, c.z - c.d * .12));
+    const dome = mesh(new THREE.SphereGeometry(pd * .38, 18, 10, 0, TAU, 0, PI / 2), cfg.turq ? mTurq : mBrick, c.x, cb + .9, c.z - c.d * .12); recon.add(dome);
+    recon.add(mesh(box(pw * .45, 1.35, .5, 1.5), mBrick, c.x, cb + .675, c.z - c.d * .12 + pd / 2 + .2));
+    recon.add(mesh(box(pw * .22, .9, .55), mDark, c.x, cb + .45, c.z - c.d * .12 + pd / 2 + .25, false));
+    // side buildings
+    recon.add(mesh(box(c.w * .22, .6, c.d * .6, 1.5), mHouse, c.x - c.w * .33, cb + .3, c.z), mesh(box(c.w * .22, .6, c.d * .6, 1.5), mHouse, c.x + c.w * .33, cb + .3, c.z));
+    HS.citadel = V3(c.x, cb + 2.6, c.z);
+    if (cfg.banner) { // yabgu banner with horse-tail tug
+      recon.add(mesh(new THREE.CylinderGeometry(.04, .05, 4, 6), mat(0x4a3420), c.x + pw * .3, cb + 2.9, c.z - c.d * .12));
+      const fg = new THREE.PlaneGeometry(1.6, .9, 16, 6); fg.translate(.8, 0, 0);
+      const flag = mesh(fg, mat(0x2b7bbf, { side: THREE.DoubleSide, roughness: .8 }), c.x + pw * .3, cb + 4.3, c.z - c.d * .12, true, false);
+      recon.add(flag); const fp0 = fg.attributes.position.array.slice();
+      anim.push((dt, t) => { const a = fg.attributes.position; for (let i = 0; i < a.count; i++) { const x = fp0[i * 3]; a.setZ(i, Math.sin(x * 3.5 - t * 6) * .12 * x); } a.needsUpdate = true; fg.computeVertexNormals(); });
+      const sunE = mesh(new THREE.CircleGeometry(.18, 16), basic(0xffd25a, { side: THREE.DoubleSide }), c.x + pw * .3 + .55, cb + 4.35, c.z - c.d * .12 + .01, false, false); recon.add(sunE);
+    }
+    // excavation (ruin mode) at citadel gate
+    const ex = mesh(box(4, .3, 2.6), mat(0x6b4a2c, { roughness: 1 }), c.x, cb - .05, c.z + c.d / 2 - .4, false); ruin.add(ex);
+    for (let k = 0; k < 3; k++) ruin.add(mesh(box(.25, .55, 2.2), mRuin, c.x - 1.2 + k * 1.2, cb + .1, c.z + c.d / 2 - .4));
+    ruin.add(mesh(box(3, .55, .25), mRuin, c.x, cb + .1, c.z + c.d / 2 - 1.5));
+    HS.excavation = V3(c.x, cb + 1.8, c.z + c.d / 2);
+  }
+
+  // ---- streets & houses --------------------------------------------------------
+  const center = new THREE.Vector2(cfg.mosque ? cfg.mosque[0] : cen.x, cfg.mosque ? cfg.mosque[1] : cen.y);
+  const streets = gateObjs.map(g => [g.p, center]);
+  const inner = offsetPoly(poly, -2.6); const houses = [], houses2 = [], bumps = [];
+  const hcol = ['#c9a57a', '#d1b086', '#bf9a6e', '#d8b98f', '#c49f73'];
+  for (let x = -80; x < 80; x += 3.3) for (let z = -60; z < 60; z += 3.3) {
+    const px = x + R(-.4, .4), pz = z + R(-.4, .4);
+    if (!inPoly(px, pz, inner)) continue;
+    if (citBox && Math.abs(px - citBox.x) < citBox.w / 2 + 3.5 && Math.abs(pz - citBox.z) < citBox.d / 2 + 3.5) continue;
+    if (streets.some(([a, b]) => distSeg(px, pz, a, b) < 1.5)) continue;
+    if ((cfg.mosque || cfg.madrasa) && Math.hypot(px - center.x, pz - center.y) < 6.5) continue;
+    if (cfg.workshop && Math.hypot(px - cfg.workshop[0], pz - cfg.workshop[1]) < (cfg.workshopBig ? 6 : 4)) continue;
+    if (cfg.bath && Math.hypot(px - cfg.bath[0], pz - cfg.bath[1]) < 3.5) continue;
+    if (rnd() < .12) continue;
+    const w = R(1.8, 2.7), d = R(1.8, 2.7), h = R(.32, .5), r = R(-.05, .05), c = pick(hcol);
+    houses.push({ p: V3(px, base + h / 2, pz - d * .25), r, s: V3(w, h, d * .5), c });
+    houses2.push({ p: V3(px - w * .32, base + h * .45, pz + d * .2), r, s: V3(w * .36, h * .9, d * .45), c });
+    if (rnd() < .4) bumps.push({ p: V3(px, base - .05, pz), s: V3(w * .7, R(.12, .25), d * .7) });
+    if (rnd() < .05) smoke.add(V3(px, base + h + .1, pz), 4);
+  }
+  recon.add(instanced(unit, mHouse, houses), instanced(unit, mHouse, houses2));
+  ruin.add(instanced(new THREE.SphereGeometry(.5, 8, 5, 0, TAU, 0, PI / 2), mRuin, bumps));
+  if (houses.length) { const h0 = houses[Math.floor(houses.length * .55)]; HS.houses = V3(h0.p.x, base + 1.6, h0.p.z); }
+  // excavation of houses (ruin)
+  if (houses.length) { const h1 = houses[Math.floor(houses.length * .3)].p; ruin.add(mesh(box(5, .25, 4), mat(0x6b4a2c), h1.x, base - .05, h1.z, false)); for (let k = 0; k < 4; k++) ruin.add(mesh(box(k % 2 ? 4.6 : .22, .4, k % 2 ? .22 : 3.6), mRuin, h1.x + (k === 0 ? -2.2 : k === 2 ? 2.2 : 0), base + .05, h1.z + (k === 1 ? -1.7 : k === 3 ? 1.7 : 0))); if (!HS.excavation) HS.excavation = V3(h1.x, base + 1.5, h1.z); }
+
+  // ---- mosque / madrasa / minaret ---------------------------------------------
+  if (cfg.mosque) {
+    const [mx, mz] = cfg.mosque; const g = new THREE.Group(); g.position.set(mx, base, mz);
+    g.add(mesh(box(6, 1.1, 5, 1.5), mBrick, 0, .55, 0));
+    g.add(mesh(new THREE.CylinderGeometry(1.5, 1.5, .5, 16), mBrick, 0, 1.35, 0));
+    g.add(mesh(new THREE.SphereGeometry(1.5, 20, 10, 0, TAU, 0, PI / 2), cfg.turq ? mTurq : mBrick, 0, 1.6, 0));
+    g.add(mesh(box(2.4, 1.8, .7, 1.5), mBrick, 0, .9, 2.7)); g.add(mesh(box(1.1, 1.2, .3), mDark, 0, .6, 3.05, false));
+    if (cfg.minaret) { g.add(mesh(new THREE.CylinderGeometry(.28, .45, 3.6, 12), mBrick, 2.6, 1.8, -2.0)); g.add(mesh(new THREE.CylinderGeometry(.42, .32, .4, 12), mBrick, 2.6, 3.8, -2.0)); g.add(mesh(new THREE.ConeGeometry(.3, .5, 12), cfg.turq ? mTurq : mBrick, 2.6, 4.25, -2.0)); HS.minaret = V3(mx + 2.6, base + 5, mz - 2); }
+    if (cfg.madrasa) { const md = new THREE.Group(); md.position.set(0, 0, -7.5); for (const [x, z, w, d] of [[0, -2.5, 8, 1.2], [-3.4, 0, 1.2, 6], [3.4, 0, 1.2, 6]]) md.add(mesh(box(w, .8, d, 1.5), mBrick, x, .4, z)); md.add(mesh(box(3, 2, .8, 1.5), mBrick, 0, 1, 2.6)); md.add(mesh(box(1.4, 1.4, .3), mDark, 0, .7, 3.0, false)); g.add(md); }
+    recon.add(g); HS.mosque = V3(mx, base + 3.6, mz);
+    const mr = mesh(new THREE.SphereGeometry(3.4, 14, 8, 0, TAU, 0, PI / 2), mRuin, mx, base - .1, mz); mr.scale.y = .25; ruin.add(mr);
+  }
+  if (cfg.farMinaret) {
+    const [x, z] = cfg.farMinaret; const g = new THREE.Group(); g.position.set(x, 0, z);
+    g.add(mesh(new THREE.CylinderGeometry(.55, .95, 6, 14), mBrick, 0, 3, 0)); g.add(mesh(new THREE.CylinderGeometry(.75, .55, .5, 14), mBrick, 0, 6.2, 0)); g.add(mesh(new THREE.CylinderGeometry(.45, .5, 1, 14), mBrick, 0, 6.9, 0)); g.add(mesh(new THREE.ConeGeometry(.5, .8, 14), mTurq, 0, 7.8, 0));
+    recon.add(g); const gr = mesh(new THREE.CylinderGeometry(.6, 1.0, 1.6, 14), mRuin, x, .8, z); ruin.add(gr);
+    HS.minaret = V3(x, 9.2, z);
+  }
+  // ---- workshop: kilns + jars --------------------------------------------------------
+  if (cfg.workshop) {
+    const [wx, wz] = cfg.workshop; const n = cfg.workshopBig ? 7 : 4; const kilnM = mat(0x9b6b44, { map: brick });
+    for (let i = 0; i < n; i++) {
+      const a = i / n * TAU, r = cfg.workshopBig ? 3.2 : 2; const x = wx + Math.cos(a) * r, z = wz + Math.sin(a) * r;
+      recon.add(mesh(new THREE.SphereGeometry(.7, 12, 8, 0, TAU, 0, PI / 2), kilnM, x, base, z));
+      recon.add(mesh(new THREE.CylinderGeometry(.12, .15, .5, 8), kilnM, x, base + .8, z));
+      smoke.add(V3(x, base + 1.05, z), 6);
+    }
+    const jarGeo = new THREE.LatheGeometry([[0, 0], [.18, .02], [.26, .2], [.22, .42], [.1, .5], [.11, .58], [0, .58]].map(([x, y]) => new THREE.Vector2(x, y)), 12);
+    const jars = []; for (let i = 0; i < 22; i++) jars.push({ p: V3(wx + R(-1.4, 1.4), base, wz + R(-1.4, 1.4)), s: V3(1, 1, 1).multiplyScalar(R(.7, 1.3)) });
+    const tt = texTerracotta(); recon.add(instanced(jarGeo, mat(0xffffff, { map: tt }), jars));
+    HS.workshop = V3(wx, base + 2.6, wz);
+  }
+  if (cfg.bath) { const [bx, bz] = cfg.bath; for (const [dx, dz, r] of [[0, 0, 1.1], [1.6, .4, .8], [-1.4, .6, .7], [.3, -1.5, .7]]) recon.add(mesh(new THREE.SphereGeometry(r, 14, 8, 0, TAU, 0, PI / 2), mBrick, bx + dx, base + .4, bz + dz)); recon.add(mesh(box(4.6, .4, 3.6, 1.5), mBrick, bx, base + .2, bz)); }
+
+  // ---- mausoleum outside ----------------------------------------------------------
+  if (cfg.mausoleum) {
+    const [x, z, turq] = cfg.mausoleum; const g = new THREE.Group(); g.position.set(x, 0, z);
+    g.add(mesh(box(4, 3, 4, 1.5), mBrick, 0, 1.5, 0)); g.add(mesh(new THREE.CylinderGeometry(1.7, 1.7, .8, 16), mBrick, 0, 3.4, 0));
+    g.add(mesh(new THREE.SphereGeometry(1.7, 20, 10, 0, TAU, 0, PI / 2), turq ? mTurq : mBrick, 0, 3.8, 0));
+    g.add(mesh(box(2.6, 4.2, .8, 1.5), mBrick, 0, 2.1, 2.2)); g.add(mesh(box(1.2, 2.0, .3), mDark, 0, 1.0, 2.62, false));
+    if (turq) { for (const sx of [-1.5, 1.5]) { g.add(mesh(new THREE.CylinderGeometry(.22, .3, 5, 10), mBrick, sx, 2.5, 2.3)); g.add(mesh(new THREE.ConeGeometry(.26, .5, 10), mTurq, sx, 5.25, 2.3)); } g.add(mesh(new THREE.SphereGeometry(1.1, 16, 8, 0, TAU, 0, PI / 2), mTurq, 0, 2.6, -2.8)); g.add(mesh(box(2.6, 2.6, 2.6, 1.5), mBrick, 0, 1.3, -2.8)); }
+    g.rotation.y = .4; scene.add(g); HS.mausoleum = V3(x, 6.5, z);
+  }
+
+  // ---- river with reeds and trees ---------------------------------------------------
+  if (cfg.river) {
+    const rp = smoothPath(cfg.river.map(([x, z]) => new THREE.Vector2(x, z)), 160);
+    const wm = waterMat(0x2d6f86, .92, .25); anim.push((dt, t) => wm.uniforms.t.value = t);
+    scene.add(new THREE.Mesh(ribbon(rp, i => 9 + Math.sin(i * 12) * 2, .25), wm));
+    const bank = new THREE.Mesh(ribbon(rp, 16, .12), mat(0x7c8a4e, { roughness: 1 })); bank.receiveShadow = true; scene.add(bank);
+    const reeds = [], crowns = [], trunks = [];
+    rp.forEach((p, i) => { if (i % 1) return; for (let k = 0; k < 6; k++) { const side = rnd() < .5 ? -1 : 1; const a = rp[Math.min(i + 1, rp.length - 1)].clone().sub(p).normalize(); const n = new THREE.Vector2(-a.y, a.x).multiplyScalar(side * R(4.5, 7.5)); reeds.push({ p: V3(p.x + n.x, .1, p.y + n.y), rx: R(-.2, .2), rz: R(-.2, .2), s: V3(1, R(.7, 1.4), 1) }); }
+      if (i % 3 === 0) { const side = rnd() < .5 ? -1 : 1; const a = rp[Math.min(i + 1, rp.length - 1)].clone().sub(p).normalize(); const n = new THREE.Vector2(-a.y, a.x).multiplyScalar(side * R(8, 14)); const h = R(1.2, 2.2); trunks.push({ p: V3(p.x + n.x, h / 2, p.y + n.y), s: V3(1, h, 1) }); crowns.push({ p: V3(p.x + n.x, h + .7, p.y + n.y), s: V3(R(.7, 1.1), R(1.4, 2), R(.7, 1.1)), c: pick(['#6f8a3c', '#7d9446', '#5f7a34', '#8a9a50']) }); } });
+    const reedGeo = new THREE.ConeGeometry(.08, 1.3, 4); reedGeo.translate(0, .65, 0);
+    scene.add(instanced(reedGeo, mat(0xb8b064), reeds, false), instanced(new THREE.CylinderGeometry(.08, .12, 1, 5), mat(0x5b4630), trunks), instanced(new THREE.SphereGeometry(1, 8, 6), mat(0xffffff, { roughness: 1 }), crowns));
+    const mid = rp[Math.floor(rp.length * .55)]; HS.river = V3(mid.x, 2.5, mid.y);
+  }
+  // ---- marsh -----------------------------------------------------------
+  if (cfg.marsh) {
+    const wm = waterMat(0x3b6e6a, .9, .3); anim.push((dt, t) => wm.uniforms.t.value = t);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(cfg.W / 2 + 4.5, 90, 64), wm); ring.rotation.x = -PI / 2; ring.position.y = .2; scene.add(ring);
+    const reeds = []; for (let i = 0; i < 3000; i++) { const a = R(0, TAU), r = R(cfg.W / 2 + 5, 85); if (fbm(Math.cos(a) * r * .05, Math.sin(a) * r * .05, 3) < .45) continue; reeds.push({ p: V3(Math.cos(a) * r, .2, Math.sin(a) * r), rx: R(-.25, .25), rz: R(-.25, .25), s: V3(1, R(.8, 1.6), 1) }); }
+    const reedGeo = new THREE.ConeGeometry(.09, 1.5, 4); reedGeo.translate(0, .75, 0); scene.add(instanced(reedGeo, mat(0xa9a85e), reeds, false));
+    HS.marsh = V3(cfg.W / 2 + 14, 2.5, 8);
+  }
+  // ---- moat ------------------------------------------------------------
+  if (cfg.moat) {
+    const outer = offsetPoly(poly, 9.5), innerM = offsetPoly(poly, 6.5);
+    const s = shapeXZ(outer); s.holes.push(new THREE.Path(innerM.map(p => new THREE.Vector2(p.x, -p.y))));
+    const g = new THREE.ShapeGeometry(s); g.rotateX(-PI / 2); const wm = waterMat(0x2f6a7c, .92, .4); anim.push((dt, t) => wm.uniforms.t.value = t);
+    const m = new THREE.Mesh(g, wm); m.position.y = .12; scene.add(m);
+    const bank = new THREE.Mesh(new THREE.ShapeGeometry((() => { const s2 = shapeXZ(offsetPoly(poly, 10.5)); s2.holes.push(new THREE.Path(offsetPoly(poly, 5.8).map(p => new THREE.Vector2(p.x, -p.y)))); return s2; })()).rotateX(-PI / 2), mat(0x6e6a44)); bank.position.y = .06; scene.add(bank);
+    const q = outer[1]; HS.moat = V3(q.x - 6, 2, q.y - 2);
+  }
+  // ---- fields -------------------------------------------------------------
+  if (cfg.fields) for (const [fx, fz, fw, fd] of cfg.fields) {
+    const cols = [['#7f9447', '#6c8239'], ['#c9b45c', '#b39c48'], ['#90a352', '#7b8e44'], ['#a7a35a', '#918d4b']];
+    let x = fx; let k = 0; while (x < fx + fw) { const w = R(5, 9); const [c1, c2] = cols[k++ % cols.length]; const t = texField(c1, c2); t.repeat.set(w / 3, 1); const f = mesh(new THREE.PlaneGeometry(w - .6, fd), mat(0xffffff, { map: t, roughness: 1 }), x + w / 2, .14, fz + fd / 2, false, true); f.rotation.x = -PI / 2; f.rotation.z = R(-.03, .03); scene.add(f); x += w; }
+    const wm = waterMat(0x3a7f95, .9, .5); anim.push((dt, t) => wm.uniforms.t.value = t);
+    const canal = mesh(new THREE.PlaneGeometry(fw, .6), wm, fx + fw / 2, .17, fz - .4, false, false); canal.rotation.x = -PI / 2; scene.add(canal);
+    HS.fields = V3(fx + fw * .5, 2.2, fz + fd / 2);
+  }
+  // ---- karez ---------------------------------------------------------------
+  if (cfg.karez) { const [a, b] = cfg.karez.map(([x, z]) => new THREE.Vector2(x, z)); const n = Math.floor(a.distanceTo(b) / 3.5); const ks = []; for (let i = 0; i < n; i++) { const p = a.clone().lerp(b, i / n); ks.push({ p: V3(p.x + Math.sin(i * .5) * 1.5, 0, p.y), s: V3(.8, .3, .8) }); } scene.add(instanced(new THREE.TorusGeometry(1, .5, 6, 10).rotateX(PI / 2), mRuin, ks)); const m = a.clone().lerp(b, .5); HS.karez = V3(m.x + 2, 2.5, m.y); }
+  if (cfg.hills) HS.hills = V3(-20, 14, -110);
+
+  // ---- yurts (nomad camp) -----------------------------------------------------
+  if (cfg.yurts) {
+    const [yx, yz, n] = cfg.yurts; const { wall, roof } = yurtGeos(); const ws = [], rs = []; const felt = texFelt();
+    for (let i = 0; i < n; i++) { const a = i / n * TAU + R(-.2, .2), r = R(3, 9); const x = yx + Math.cos(a) * r, z = yz + Math.sin(a) * r; const s = R(.45, .6); ws.push({ p: V3(x, 0, z), s: V3(s, s, s), r: R(0, TAU) }); rs.push({ p: V3(x, 0, z), s: V3(s, s, s) }); if (rnd() < .3) smoke.add(V3(x, s * 1.4, z), 4); }
+    scene.add(instanced(wall, mat(0xffffff, { map: felt, side: THREE.DoubleSide }), ws), instanced(roof, mat(0xf0e8d6), rs));
+    // horses
+    const hg = camelGeo(); const horses = []; for (let i = 0; i < 8; i++) horses.push({ p: V3(yx + R(-12, 12), 0, yz + R(10, 16) * (yz > 0 ? -1 : 1)), r: R(0, TAU), s: V3(.16, .14, .16), c: pick(['#5a3a22', '#2e2018', '#8a6a48', '#d8cdb8']) });
+    scene.add(instanced(hg, mat(0xffffff), horses));
+    HS.yurts = V3(yx, 2.4, yz);
+  }
+  // ---- caravan ------------------------------------------------------------------
+  const camels = [];
+  if (cfg.caravanFrom && gateObjs.length) {
+    const g0 = gateObjs[0]; const start = new THREE.Vector2(...cfg.caravanFrom);
+    const pts = [start, start.clone().lerp(g0.p, .5).add(new THREE.Vector2(R(-10, 10), R(-10, 10))), g0.p.clone().add(g0.out.clone().multiplyScalar(8)), g0.p.clone(), g0.p.clone().lerp(center, .5), center.clone()];
+    const curve = new THREE.CatmullRomCurve3(pts.map((p, i) => V3(p.x, i >= 3 ? base : 0, p.y)));
+    const cg = camelGeo(); const cm = mat(0xa07850); const bag = new THREE.BoxGeometry(.5, .45, .9);
+    for (let i = 0; i < 7; i++) { const c = new THREE.Mesh(cg, cm); c.scale.setScalar(.2); c.castShadow = true; const b = mesh(bag, mat(pick([0x8b2a1f, 0x2b5f8f, 0x6b4a2c])), 0, 2.15, 0); c.add(b); scene.add(c); camels.push({ c, off: i * .018 }); }
+    let tt = 0; anim.push((dt) => { tt = (tt + dt * .012) % 1; camels.forEach(({ c, off }) => { const u = ((tt - off) % 1 + 1) % 1; const p = curve.getPointAt(u), q = curve.getPointAt(Math.min(1, u + .002)); c.position.copy(p); c.position.y += Math.abs(Math.sin(u * 900)) * .02; c.rotation.y = -Math.atan2(q.z - p.z, q.x - p.x); c.visible = u < .985; }); });
+    const hp = curve.getPointAt(.3); HS.caravan = V3(hp.x, 2.2, hp.z);
+  }
+  // scattered saxaul bushes
+  const bushes = []; for (let i = 0; i < 500; i++) { const a = R(0, TAU), r = R(cfg.W * .7 + 10, 200); bushes.push({ p: V3(Math.cos(a) * r, 0, Math.sin(a) * r), s: V3(1, 1, 1).multiplyScalar(R(.3, .8)), r: R(0, TAU) }); }
+  scene.add(instanced(new THREE.IcosahedronGeometry(1, 0), mat(0xa39a70, { flatShading: true }), bushes, false));
+
+  const hsList = buildHotspots(scene, slide, HS, ruin);
+  const vr = Math.max(cfg.W || 60, cfg.D || 50);
+  return {
+    name: 'site', scene, clickables: [], hotspots: hsList,
+    view: { pos: V3(vr * .55, vr * .62 + 8, vr * 1.05), target: V3(0, 1, 0) },
+    limits: { min: 3, max: 220, maxPolar: 1.48 }, hsDist: 18,
+    toggleRuin(on) { recon.visible = !on; ruin.visible = on; hsList.forEach(h => { if (h.key === 'excavation') h.obj.visible = on; }); },
+    hasRuin: true,
+    update(dt, t) { anim.forEach(f => f(dt, t)); smoke.update(dt); }
+  };
+}
+
+// hotspot pins (CSS2D) ---------------------------------------------------------
+function buildHotspots(scene, slide, HS, ruinGroup) {
+  const out = [];
+  const keys = Object.keys(HS);
+  const order = Object.keys(slide.hotspots || {}).filter(k => HS[k]).concat(keys.filter(k => !(slide.hotspots || {})[k]));
+  for (const key of order) {
+    const spec = (slide.hotspots || {})[key] || C.generic[key]; if (!spec) continue;
+    const audio = (slide.hotspots || {})[key] ? `hs_${slide.id}_${key}` : `gen_${key}`;
+    const data = { key, ...spec, audio, pos: HS[key].clone() };
+    const obj = label(`i<span class="tip">${spec.title}</span>`, 'hs', () => UI.openHotspot(data, obj));
+    obj.position.copy(HS[key]); scene.add(obj);
+    if (key === 'excavation') obj.visible = false;
+    out.push({ key, obj, data });
+  }
+  return out;
+}
+
+// ============================================================================
+//  MANGYSTAU NECROPOLES  (1 unit = 1 m) – modelled after the project photos
+// ============================================================================
+function steppeScene(opts) {
+  const scene = new THREE.Scene();
+  const sunDir = opts.sunDir.clone().normalize();
+  scene.add(skyDome(opts.top, opts.hor, sunDir, opts.sunCol));
+  scene.fog = new THREE.Fog(opts.hor, 60, 330);
+  scene.add(new THREE.HemisphereLight(0xd6e6ff, 0x8a7350, opts.hemi || .85));
+  const sun = new THREE.DirectionalLight(opts.sunCol, opts.sunI || 2.8); sun.position.copy(sunDir).multiplyScalar(80); sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 5, far: 220 }); sun.shadow.bias = -0.0005; sun.shadow.normalBias = .02;
+  scene.add(sun);
+  const gtex = texSteppe(opts.ground || '#ad9a70', opts.seed || 11); gtex.repeat.set(70, 70);
+  const gg = new THREE.PlaneGeometry(700, 700, 140, 140); gg.rotateX(-PI / 2);
+  const gp = gg.attributes.position;
+  for (let i = 0; i < gp.count; i++) { const x = gp.getX(i), z = gp.getZ(i); const r = Math.hypot(x, z); gp.setY(i, (fbm(x * .03, z * .03, 4) - .5) * 1.2 * smooth(15, 60, r) + (fbm(x * .3, z * .3, 2) - .5) * .06); }
+  gg.computeVertexNormals();
+  const ground = mesh(gg, mat(0xffffff, { map: gtex, roughness: 1 }), 0, 0, 0, false, true); ground.userData.ground = true; scene.add(ground);
+  // dry grass tufts
+  srand(opts.seed || 5); const tufts = [];
+  for (let i = 0; i < 2600; i++) { const a = R(0, TAU), r = Math.sqrt(rnd()) * 120; tufts.push({ p: V3(Math.cos(a) * r, 0, Math.sin(a) * r), r: R(0, TAU), s: V3(1, 1, 1).multiplyScalar(R(.18, .5)), c: pick(['#c2ad7a', '#b09d6c', '#cdb784', '#a69a6a', '#bba97c']) }); }
+  const tuftGeo = new THREE.IcosahedronGeometry(1, 0); tuftGeo.scale(1, .55, 1); tuftGeo.translate(0, .3, 0);
+  scene.add(instanced(tuftGeo, mat(0xffffff, { flatShading: true, roughness: 1 }), tufts, false));
+  return scene;
+}
+
+// --- building blocks ------------------------------------------------------------
+function headstoneGeo(w, h, t) { // slab with rounded top
+  const s = new THREE.Shape(); s.moveTo(-w / 2, 0); s.lineTo(w / 2, 0); s.lineTo(w / 2, h - w / 2); s.absarc(0, h - w / 2, w / 2, 0, PI, false); s.lineTo(-w / 2, 0);
+  const g = new THREE.ExtrudeGeometry(s, { depth: t, bevelEnabled: true, bevelThickness: .015, bevelSize: .015, bevelSegments: 1 }); g.translate(0, 0, -t / 2); return g;
+}
+function wallArch(w, h, t, aw, ah) {
+  const s = new THREE.Shape(); s.moveTo(-w / 2, 0); s.lineTo(w / 2, 0); s.lineTo(w / 2, h); s.lineTo(-w / 2, h); s.lineTo(-w / 2, 0);
+  const hole = new THREE.Path(); hole.moveTo(-aw / 2, .02); hole.lineTo(aw / 2, .02); hole.lineTo(aw / 2, ah - aw / 2); hole.absarc(0, ah - aw / 2, aw / 2, 0, PI, false); hole.lineTo(-aw / 2, .02); s.holes.push(hole);
+  const g = new THREE.ExtrudeGeometry(s, { depth: t, bevelEnabled: false }); g.translate(0, 0, -t / 2);
+  const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * .5, uv.getY(i) * .5); return g;
+}
+function sarcophagus(m, mRib, x, z, r = 0, opts = {}) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = r;
+  const L = opts.L || 1.7;
+  g.add(mesh(rockGeo(1.0, .1, L + .6, x * 3 + z, .1, .05, 3), m, 0, .05, 0));
+  if (opts.plain) g.add(mesh(new RoundedBoxGeometry(.5, .38, L, 2, .04), m, 0, .3, 0));
+  else { const b = mesh(new RoundedBoxGeometry(.5, .42, L, 2, .05), [m, m, m, m, m, m], 0, .32, 0); b.material = mRib; g.add(b); }
+  if (!opts.noHeads) for (const sz of [-1, 1]) { const hs = mesh(headstoneGeo(.36, .72, .12), m, 0, .1, sz * (L / 2 + .08)); g.add(hs); }
+  return g;
+}
+function gabledTomb(m, mDark, x, z, r, s = 1) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = r; g.scale.setScalar(s);
+  const nSl = 2 + Math.floor(rnd() * 3);
+  for (let i = 0; i < nSl; i++) g.add(mesh(rockGeo(R(.8, 1.3), R(.1, .18), R(.7, 1.2), x + i * 7, .1, .08, 3), m, R(-.6, .6), .06, R(-.4, .4)));
+  const prof = new THREE.Shape(); prof.moveTo(-.28, 0); prof.lineTo(.28, 0); prof.lineTo(.28, .5); prof.lineTo(0, .72); prof.lineTo(-.28, .5); prof.lineTo(-.28, 0);
+  const pg = new THREE.ExtrudeGeometry(prof, { depth: 1.4, bevelEnabled: true, bevelThickness: .03, bevelSize: .03, bevelSegments: 1 }); pg.translate(0, 0, -.7);
+  const uv = pg.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * .4, uv.getY(i) * .4);
+  g.add(mesh(pg, m, 0, .14, 0));
+  for (const sx of [-1, 1]) g.add(mesh(box(.02, .32, 1.0), mDark, sx * .295, .42, 0, false));
+  if (rnd() < .5) g.add(mesh(box(.75, .14, 1.7), m, 0, .07, 0));
+  return g;
+}
+function ramStone(m, mHerr, x, z, r = 0, s = 1) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = r; g.scale.setScalar(s);
+  g.add(mesh(rockGeo(1.25, .78, .7, 7 + x, .15, .06, 4), m, 0, .39, 0));
+  g.add(mesh(new RoundedBoxGeometry(1.65, .14, .95, 2, .03), m, 0, .85, 0));
+  g.add(mesh(new RoundedBoxGeometry(1.15, .12, .62, 2, .03), m, 0, .98, 0));
+  for (let k = 0; k < 3; k++) { const rb = mesh(new RoundedBoxGeometry(1.05 - k * .02, .1, .5 - k * .02, 2, .04), mHerr, 0, 1.09 + k * .1, 0); g.add(rb); }
+  const roll = mesh(new THREE.CylinderGeometry(.27, .27, 1.05, 18), m, 0, 1.4, 0); roll.rotation.z = PI / 2; g.add(roll);
+  return g;
+}
+function kulpytas(m, mCarve, x, z, r = 0, h = 1.6) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = r;
+  const pillar = mesh(box(.3, h, .3), mCarve ? [m, m, m, m, mCarve, m] : m, 0, h / 2, 0); g.add(pillar);
+  const cap = mesh(new THREE.ConeGeometry(.24, .32, 4), m, 0, h + .16, 0); cap.rotation.y = PI / 4; g.add(cap);
+  g.add(mesh(box(.42, .16, .42), m, 0, .08, 0));
+  return g;
+}
+function steppedTomb(m, x, z, r = 0) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = r;
+  [[1.05, .62], [.88, .5], [.72, .42]].forEach(([w, d], i) => g.add(mesh(new RoundedBoxGeometry(w, .24, d, 2, .03), m, 0, .12 + i * .24, 0)));
+  const roll = mesh(new THREE.CylinderGeometry(.17, .17, .74, 14), m, 0, .86, 0); roll.rotation.z = PI / 2; g.add(roll);
+  return g;
+}
+function stackedEnclosure(m, x, z, w, d, h, r = 0, gapSide = 2) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = r; const list = [];
+  const rows = Math.round(h / .17);
+  const sides = [[V3(-w / 2, 0, -d / 2), V3(w / 2, 0, -d / 2)], [V3(w / 2, 0, -d / 2), V3(w / 2, 0, d / 2)], [V3(w / 2, 0, d / 2), V3(-w / 2, 0, d / 2)], [V3(-w / 2, 0, d / 2), V3(-w / 2, 0, -d / 2)]];
+  sides.forEach(([a, b], si) => {
+    const L = a.distanceTo(b); const dir = b.clone().sub(a).normalize(); const ang = -Math.atan2(dir.z, dir.x);
+    for (let k = 0; k < rows; k++) {
+      let s = (k % 2) * .3; while (s < L) {
+        const l = R(.45, .85); const t = Math.min(s + l / 2, L - .1);
+        if (si === gapSide && Math.abs(t - L / 2) < .5 && k > 0) { s += l; continue; }
+        const top = k === rows - 1 && rnd() < .35;
+        const p = a.clone().add(dir.clone().multiplyScalar(t));
+        list.push({ p: V3(p.x + R(-.03, .03), .085 + k * .17 + (rnd() < .1 ? .03 : 0), p.z + R(-.03, .03)), r: ang + R(-.06, .06), rz: R(-.04, .04), s: V3(l * .97, .15, R(.38, .5)) });
+        if (top) list[list.length - 1].p.y += .02;
+        s += l;
+      }
+    }
+  });
+  g.add(instanced(new RoundedBoxGeometry(1, 1, 1, 1, .08), m, list)); return g;
+}
+function domedMausoleum(m, x, z, r = 0) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = r;
+  g.add(mesh(box(3.4, 2.8, 3.4, 1.4), m, 0, 1.4, 0));
+  g.add(mesh(box(3.6, .18, 3.6, 1.4), m, 0, 2.89, 0));
+  const drum = mesh(new THREE.CylinderGeometry(1.35, 1.45, .7, 8), m, 0, 3.33, 0); drum.rotation.y = PI / 8; g.add(drum);
+  for (let k = 0; k < 4; k++) { const c = mesh(new THREE.CylinderGeometry(1.3 - k * .3, 1.38 - k * .3, .38, 8), m, 0, 3.87 + k * .38, 0); c.rotation.y = PI / 8; g.add(c); }
+  g.add(mesh(new THREE.ConeGeometry(.22, .6, 8), m, 0, 5.6, 0));
+  g.add(mesh(box(.8, 1.3, .2), mat(0x241a10), 0, .65, 1.71, false));
+  return g;
+}
+
+function buildKenti(slide) {
+  const scene = steppeScene({ top: 0x2f6fd0, hor: 0xcfe0f2, sunDir: V3(.45, .7, .5), sunCol: 0xfff3dc, ground: '#a9986f', seed: 17 });
+  const HS = {}; const anim = []; srand(1234);
+  const lime = texLime('#ddd0ad', true, 21, .6); lime.repeat.set(.5, .5);
+  const limeP = texLime('#d8cfb4', false, 22, .9); limeP.repeat.set(1, 1);
+  const pink = texLime('#d8b9a2', true, 23, .4); pink.repeat.set(.5, .5);
+  const mBlock = mat(0xffffff, { map: lime }); const mStone = mat(0xffffff, { map: limeP }); const mPink = mat(0xffffff, { map: pink });
+  const mGray = mat(0xc9c4b4, { map: limeP });
+  const mWarm = mat(0xffffff, { map: (() => { const t = texLime('#e6c89a', false, 24, .2); return t; })() });
+  const rib = texRibs(); const mRib = mat(0xffffff, { map: rib });
+  const herr = texHerring(); const mHerr = mat(0xffffff, { map: herr });
+  const mDark = mat(0x2b261e);
+  const saber = new THREE.MeshStandardMaterial({ map: texCarved('saber'), roughness: .95 });
+
+  // ---------- Kenti-baba zone -------------------------------------------------
+  // Mausoleum A: tall tapered square tower with dentil frieze
+  const A = new THREE.Group(); A.position.set(-5, 0, -3); A.rotation.y = .12; scene.add(A);
+  const ag = new THREE.BoxGeometry(4.4, 6, 4.4, 1, 6, 1); const ap = ag.attributes.position;
+  for (let i = 0; i < ap.count; i++) { const y = ap.getY(i); const k = lerp(1, .9, (y + 3) / 6); ap.setX(i, ap.getX(i) * k); ap.setZ(i, ap.getZ(i) * k); }
+  boxUV(ag, 4.4, 6, 4.4, 2); ag.computeVertexNormals();
+  A.add(mesh(ag, mBlock, 0, 3, 0));
+  A.add(mesh(box(4.1, .22, 4.1, 2), mBlock, 0, 6.1, 0));
+  A.add(mesh(box(.75, 1.15, .3), mDark, 0, .58, 2.12, false));
+  A.add(mesh(box(.6, .4, .1), mStone, 0, 5.55, 2.0));
+  for (let gI = -1; gI <= 1; gI++) for (let k = 0; k < 5; k++) A.add(mesh(box(.12, .22, .08), mDark, gI * 1.2 + (k - 2) * .2, 5.1, 2.02, false));
+  // stele in front (photo)
+  const st = mesh(rockGeo(.7, 1.1, .35, 3, .7, .1), mWarm, -3.2, .55, 1.2); st.rotation.y = .3; scene.add(st);
+  HS.maus_a = V3(-5, 7.6, -3);
+
+  // Mausoleum B: open-roof stepped enclosure with arched doorway, sarcophagi inside
+  const B = new THREE.Group(); B.position.set(3.6, 0, -2.6); B.rotation.y = .12; scene.add(B);
+  const Wd = 4.8, Dd = 4.4, T = .5;
+  B.add(mesh(box(Wd, 2.7, T, 1.5), mBlock, 0, 1.35, -Dd / 2 + T / 2)); // back
+  B.add(mesh(wallArch(Wd, 2.3, T, 1.0, 1.75), mBlock, 0, 0, Dd / 2 - T / 2)); // front with arch
+  // left wall (straight) and right wall with stepped top
+  B.add(mesh(box(T, 2.5, Dd - T * 2, 1.5), mBlock, -Wd / 2 + T / 2, 1.25, 0));
+  [[2.7, -1.3], [2.3, 0], [1.9, 1.3]].forEach(([h, z]) => B.add(mesh(box(T, h, 1.3, 1.5), mBlock, Wd / 2 - T / 2, h / 2, z * .9)));
+  B.add(mesh(box(Wd - T * 2, .04, Dd - T * 2), mat(0x8a5a36, { roughness: 1 }), 0, .02, 0, false));
+  // sarcophagi as in the photo
+  B.add(sarcophagus(mWarm, mRib, -1.15, -.25, 0, { L: 1.6 }));
+  B.add(sarcophagus(mWarm, mRib, .35, .55, PI / 2 + .05, { L: 1.4 }));
+  B.add(sarcophagus(mWarm, mRib, .95, -1.1, PI / 2, { plain: true, noHeads: true, L: 1.1 }));
+  B.add(sarcophagus(mWarm, mRib, -1.3, 1.25, PI / 2, { plain: true, noHeads: true, L: .9 }));
+  // ritual pole with cloth
+  B.add(mesh(new THREE.CylinderGeometry(.035, .045, 2.6, 6), mat(0x5a4028), -.3, 1.3, -.4));
+  const cl = mesh(new THREE.PlaneGeometry(.12, .3), mat(0xf4f0e6, { side: THREE.DoubleSide }), -.24, 1.9, -.4, false, false); B.add(cl);
+  // arkhar horns pile
+  for (let k = 0; k < 9; k++) { const hrn = mesh(new THREE.TorusGeometry(.22, .05, 6, 12, PI * 1.3), mat(0xcdbb98), 1.55 + R(-.3, .3), .15 + R(0, .25), 1.45 + R(-.3, .3)); hrn.rotation.set(R(0, PI), R(0, PI), R(0, PI)); B.add(hrn); }
+  // loose stones
+  for (let k = 0; k < 4; k++) B.add(mesh(rockGeo(R(.3, .5), R(.25, .4), R(.2, .3), k * 3, .5), mWarm, R(-1.8, 1.8), .15, -1.8 + R(0, .2)));
+  HS.maus_b = V3(3.6, 4.0, -2.6); HS.horns = B.localToWorld(V3(1.55, 1.1, 1.45));
+  B.updateMatrixWorld(); HS.horns = B.localToWorld(V3(1.55, 1.0, 1.45));
+  const insideCam = { pos: B.localToWorld(V3(0, 1.75, 1.6)), target: B.localToWorld(V3(-.2, .35, -.8)) };
+
+  // tombs around Kenti-baba
+  scene.add(ramStone(mStone, mHerr, 7, 5, -.3)); HS.ram = V3(7, 2.6, 5);
+  scene.add(steppedTomb(mGray, 3.5, 6.5, .1)); scene.add(kulpytas(mGray, null, 3.5, 6.0, .1, 1.7));
+  scene.add(steppedTomb(mGray, 1.3, 7.6, -.05)); scene.add(kulpytas(mGray, null, 1.3, 7.1, -.05, 1.3));
+  const sk = kulpytas(mGray, saber, -6.5, 5, .2, 1.9); scene.add(sk); scene.add(steppedTomb(mGray, -6.5, 5.6, .2)); HS.saber = V3(-6.5, 2.8, 5);
+  scene.add(kulpytas(mGray, saber, -8.5, 2.5, -.2, 1.5));
+  for (let i = 0; i < 10; i++) { const x = R(-14, 14), z = R(8, 18); if (rnd() < .5) scene.add(steppedTomb(mGray, x, z, R(-.2, .2))); else scene.add(sarcophagus(mGray, mGray, x, z, R(-.2, .2), { plain: true })); if (rnd() < .6) scene.add(kulpytas(mGray, rnd() < .3 ? saber : null, x, z - .55, R(-.2, .2), R(1.1, 1.8))); }
+  const zK = label('Кенті-баба', 'zone'); zK.position.set(0, 9, -3); scene.add(zK);
+
+  // ---------- Qanga-baba field ---------------------------------------------------
+  const kx = -32, kz = 6;
+  for (let i = 0; i < 42; i++) { const x = kx + R(-11, 11), z = kz + R(-9, 9); scene.add(gabledTomb(mGray, mDark, x, z, R(-.25, .25) + .1, R(.8, 1.15))); }
+  for (let i = 0; i < 8; i++) { const x = kx + R(-10, 10), z = kz + R(-8, 8), L = R(3, 6), r = R(0, PI); const s = mesh(box(L, .25, .3, 1), mGray, x, .12, z); s.rotation.y = r; scene.add(s); }
+  HS.kanga = V3(kx, 3, kz);
+  const zQ = label('Қаңға-баба', 'zone'); zQ.position.set(kx, 4.5, kz - 10); scene.add(zQ);
+
+  // ---------- Ushtam -----------------------------------------------------------
+  const ux = 30, uz = -8;
+  scene.add(stackedEnclosure(mGray, ux, uz, 4.4, 3.4, 1.05, .15, 2));
+  scene.add(stackedEnclosure(mGray, ux + 7, uz - 2, 3.6, 3, .9, .1, 0));
+  scene.add(stackedEnclosure(mGray, ux - 4, uz - 7, 5, 3.6, 1.2, .05, 2));
+  HS.ushtam = V3(ux, 2.4, uz);
+  scene.add(domedMausoleum(mPink, ux + 6, uz - 14, .1)); scene.add(domedMausoleum(mPink, ux - 6, uz - 18, -.1)); scene.add(domedMausoleum(mPink, ux + 15, uz - 10, .2));
+  scene.add(steppedTomb(mGray, ux + 2, uz + 7, 0)); scene.add(kulpytas(mGray, null, ux + 2, uz + 6.4, 0, 1.7));
+  scene.add(steppedTomb(mGray, ux - .5, uz + 8.4, .05)); scene.add(kulpytas(mGray, null, ux - .5, uz + 7.8, .05, 2.1));
+  HS.kumbez = V3(ux + 6, 7.2, uz - 14);
+  const zU = label('Үштам', 'zone'); zU.position.set(ux + 4, 8.5, uz - 12); scene.add(zU);
+  // chalk mesa behind (as in the Ushtam photo)
+  const chalk = texChalk(); chalk.repeat.set(6, 1);
+  const mes = new THREE.CylinderGeometry(30, 46, 18, 40, 6); const mp = mes.attributes.position;
+  for (let i = 0; i < mp.count; i++) { const x = mp.getX(i), y = mp.getY(i), z = mp.getZ(i); const n = fbm(x * .08, z * .08 + y * .05, 3); const k = 1 + (n - .5) * .5; mp.setX(i, x * k); mp.setZ(i, z * k); if (y > 8) mp.setY(i, y + (n - .5) * 4); }
+  mes.computeVertexNormals();
+  const mesa = mesh(mes, mat(0xffffff, { map: chalk, roughness: 1 }), 60, 8, -80, true, true); mesa.scale.set(1.4, 1, .8); scene.add(mesa);
+  const mesa2 = mesa.clone(); mesa2.position.set(-50, 6, -110); mesa2.scale.set(1.8, .7, .7); scene.add(mesa2);
+  // modern fence line (as in photo) – subtle
+  for (let i = 0; i < 40; i++) scene.add(mesh(new THREE.CylinderGeometry(.04, .04, 1, 4), mat(0x6d5a40), ux - 20 + i * 1.6, .5, uz - 26));
+
+  // scattered stones
+  const stones = []; for (let i = 0; i < 260; i++) stones.push({ p: V3(R(-60, 60), 0, R(-40, 40)), r: R(0, TAU), rx: R(-.2, .2), s: V3(R(.15, .6), R(.08, .25), R(.15, .5)) });
+  scene.add(instanced(new THREE.DodecahedronGeometry(1, 0), mGray, stones));
+
+  const hsList = buildHotspots(scene, slide, HS);
+  return {
+    name: 'site', scene, clickables: [], hotspots: hsList,
+    view: { pos: V3(16, 18, 34), target: V3(0, 1.5, 0) },
+    limits: { min: .6, max: 140, maxPolar: 1.52 }, hsDist: 9,
+    inside: insideCam,
+    update(dt, t) { cl.rotation.y = Math.sin(t * 2) * .4; }
+  };
+}
+
+function buildBeyneu(slide) {
+  const scene = steppeScene({ top: 0x6f9fd8, hor: 0xf1d9b4, sunDir: V3(-.8, .32, .25), sunCol: 0xffd9a0, sunI: 3.0, hemi: .7, ground: '#a58f66', seed: 29 });
+  const HS = {}; srand(4321);
+  const limeP = texLime('#cfc6b0', false, 31, 1.0); const mStone = mat(0xffffff, { map: limeP });
+  const limeY = texLime('#d6c39a', false, 32, 1.2); const mStoneY = mat(0xffffff, { map: limeY });
+  const carveK = new THREE.MeshStandardMaterial({ map: texCarved('kulpytas'), roughness: .95 });
+  const carveW = new THREE.MeshStandardMaterial({ map: texCarved('warrior'), roughness: .95 });
+  const carveT = new THREE.MeshStandardMaterial({ map: texCarved('tamga'), roughness: .95 });
+  const carveL = new THREE.MeshStandardMaterial({ map: texCarved('lines'), roughness: .95 });
+
+  // main slab enclosure (photo: big broken slab box)
+  const E = new THREE.Group(); E.position.set(0, 0, 0); scene.add(E);
+  const ring = [[-2.2, -1.4], [-1, -1.6], [.3, -1.6], [1.6, -1.5], [2.4, -.6], [2.4, .6], [1.5, 1.5], [.2, 1.6], [-1.1, 1.5], [-2.3, .7], [-2.4, -.4]];
+  ring.forEach(([x, z], i) => { const up = rnd() < .45; const w = R(1.0, 1.6), h = up ? R(.6, 1.0) : R(.22, .35), d = up ? R(.18, .28) : R(.6, 1.0); const s = mesh(rockGeo(w, h, d, i * 13, .2, .07), rnd() < .5 ? mStone : mStoneY, x, h / 2 - .05, z); s.rotation.y = Math.atan2(z, x) + PI / 2 + R(-.3, .3); s.rotation.z = up ? R(-.35, .35) : R(-.1, .1); E.add(s); });
+  for (let i = 0; i < 9; i++) { const s = mesh(rockGeo(R(.6, 1.4), R(.15, .3), R(.4, .9), 50 + i, .2, .08), mStone, R(-3.5, 3.5), .1, R(-3, 3)); s.rotation.y = R(0, TAU); s.rotation.z = R(-.4, .4); E.add(s); }
+  HS.enclosure = V3(0, 2.2, 0);
+
+  // upright slab box (photo)
+  const SB = new THREE.Group(); SB.position.set(-9, 0, 6); SB.rotation.y = .4; scene.add(SB);
+  [[0, -.6, 1.6, 1.0, .24, 0, 0], [.85, 0, .24, 1.1, 1.2, 0, .12], [-.85, 0, .24, .9, 1.2, 0, -.1], [-.1, .65, 1.0, 1.05, .26, .35, 0]].forEach(([x, z, w, h, d, tx, tz], i) => { const s = mesh(rockGeo(w, h, d, 80 + i, .25, .06), mStoneY, x, h / 2 - .05, z); s.rotation.x = tx; s.rotation.z = tz; SB.add(s); });
+  for (let i = 0; i < 18; i++) SB.add(mesh(new THREE.IcosahedronGeometry(R(.08, .16), 0), mat(0x8a7448, { flatShading: true }), R(-.6, .6), R(.2, .7), R(-.4, .4)));
+  HS.slabbox = V3(-9, 2.1, 6);
+
+  // fallen carved kulpytas with round scroll head (photo)
+  const K = new THREE.Group(); K.position.set(6.5, 0, 4.5); K.rotation.y = -.35; scene.add(K);
+  K.add(mesh(box(2.7, .34, .38), [mStone, mStone, carveK, mStone, mStone, mStone], 0, .17, 0));
+  const head = mesh(new THREE.CylinderGeometry(.34, .34, .3, 24), [mStone, carveK, mStone], -1.55, .3, 0); head.rotation.x = 0; head.rotation.z = 0; K.add(head);
+  const head2 = mesh(new THREE.CylinderGeometry(.18, .18, .28, 18), mStone, -1.25, .22, .12); K.add(head2);
+  HS.carved = V3(6.5, 1.5, 4.5);
+
+  // warrior stela (photo)
+  const W = mesh(rockGeo(.8, 1.55, .5, 99, .55, .07), [mStoneY, mStoneY, mStoneY, mStoneY, carveW, mStoneY], -4, .75, -7); W.rotation.y = .5; scene.add(W);
+  scene.add(mesh(rockGeo(1.2, .3, .7, 98, .2, .1), mStoneY, -3.8, .12, -6.5));
+  HS.warrior = V3(-4, 2.4, -7);
+  // rounded upright kulpytas (photo)
+  const U = mesh(rockGeo(.62, .95, .32, 77, .7, .07), [mStone, mStone, mStone, mStone, carveL, mStone], 5, .47, -5.5); U.rotation.y = -.4; scene.add(U);
+  scene.add(mesh(rockGeo(.9, .35, .6, 76, .5, .1), mStone, 5.5, .15, -5)); HS.stone = V3(5, 1.9, -5.5);
+  // tamga on a flat stone at ground level (photo)
+  const TS = mesh(rockGeo(1.1, .14, .9, 66, .3, .05), [mStoneY, mStoneY, carveT, mStoneY, mStoneY, mStoneY], 1.5, .04, 8); TS.rotation.y = .3; scene.add(TS);
+  const glow = new THREE.PointLight(0xffc870, 0, 3); glow.position.set(1.5, .6, 8); scene.add(glow);
+  HS.tamga = V3(1.5, 1.2, 8);
+
+  // further graves in the distance
+  for (let i = 0; i < 26; i++) { const a = R(0, TAU), r = R(12, 50); const x = Math.cos(a) * r, z = Math.sin(a) * r; const g = new THREE.Group(); g.position.set(x, 0, z); for (let k = 0; k < 4; k++) { const s = mesh(rockGeo(R(.5, 1.1), R(.15, .5), R(.3, .7), i * 10 + k, .3, .08), mStone, R(-1, 1), .12, R(-.8, .8)); s.rotation.y = R(0, TAU); g.add(s); } if (rnd() < .5) g.add(mesh(rockGeo(.4, R(.7, 1.1), .25, i, .7, .07), mStoneY, 0, .45, 0)); scene.add(g); }
+  const stones = []; for (let i = 0; i < 300; i++) stones.push({ p: V3(R(-60, 60), 0, R(-50, 50)), r: R(0, TAU), s: V3(R(.1, .45), R(.05, .2), R(.1, .4)) });
+  scene.add(instanced(new THREE.DodecahedronGeometry(1, 0), mStone, stones));
+  const zB = label('Гүндіз Алп әскербасының қорымы', 'zone'); zB.position.set(0, 4.2, -2); scene.add(zB);
+
+  const hsList = buildHotspots(scene, slide, HS);
+  return {
+    name: 'site', scene, clickables: [], hotspots: hsList,
+    view: { pos: V3(11, 8, 16), target: V3(0, .6, 0) },
+    limits: { min: .6, max: 110, maxPolar: 1.52 }, hsDist: 5,
+    update(dt, t) { glow.intensity = UI.hsActive === 'tamga' ? 2 + Math.sin(t * 4) : 0; }
+  };
+}
+
+// ============================================================================
+//  VIRTUAL MUSEUM HALL
+// ============================================================================
+function lathe(pts, seg = 32) { return new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), seg); }
+
+const ARTIFACTS = {
+  jug() {
+    const g = new THREE.Group(); const m = mat(0xffffff, { map: texTerracotta(), roughness: .8 });
+    g.add(mesh(lathe([[0, 0], [.2, 0], [.28, .1], [.34, .3], [.3, .5], [.16, .66], [.12, .8], [.15, .9], [.13, .92], [0, .92]]), m));
+    const h = mesh(new THREE.TorusGeometry(.17, .035, 8, 16, PI * 1.2), m, .2, .65, 0); h.rotation.z = -PI * .35; g.add(h);
+    return g;
+  },
+  khum() {
+    const g = new THREE.Group(); const t = texTerracotta(); const m = mat(0xd9a07a, { map: t, roughness: .85 });
+    g.add(mesh(lathe([[0, 0], [.18, 0], [.38, .25], [.46, .55], [.42, .85], [.26, 1.0], [.24, 1.08], [.28, 1.1], [0, 1.1]]), m));
+    return g;
+  },
+  lamp() {
+    const g = new THREE.Group(); const m = mat(0xffffff, { map: texTerracotta(), roughness: .8 });
+    g.add(mesh(lathe([[0, 0], [.18, 0], [.24, .06], [.2, .14], [.08, .18], [.06, .22], [0, .22]]), m, 0, .3, 0));
+    const sp = mesh(new THREE.CylinderGeometry(.045, .07, .3, 10), m, .3, .38, 0); sp.rotation.z = PI / 2.4; g.add(sp);
+    const hd = mesh(new THREE.TorusGeometry(.07, .025, 6, 12), m, -.24, .42, 0); g.add(hd);
+    const flame = mesh(new THREE.SphereGeometry(.05, 8, 6), basic(0xffb347), .43, .47, 0, false, false); flame.scale.y = 1.8; g.add(flame);
+    const pl = new THREE.PointLight(0xffa040, 1.2, 2); pl.position.set(.43, .55, 0); g.add(pl); g.userData.flame = flame;
+    return g;
+  },
+  coin() {
+    const g = new THREE.Group(); const t = texCoin(); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    const side = mat(0x9a5c2a, { metalness: .8, roughness: .35 }); const face = mat(0xffffff, { map: t, metalness: .75, roughness: .38 });
+    const c = mesh(new THREE.CylinderGeometry(.4, .4, .05, 48), [side, face, face], 0, .55, 0); c.rotation.x = PI / 2; g.add(c); return g;
+  },
+  sword() {
+    const g = new THREE.Group();
+    const s = new THREE.Shape(); s.moveTo(0, -.03); s.quadraticCurveTo(.6, -.02, 1.15, .12); s.lineTo(1.2, .16); s.quadraticCurveTo(.6, .05, 0, .03); s.lineTo(0, -.03);
+    const blade = mesh(new THREE.ExtrudeGeometry(s, { depth: .01, bevelEnabled: true, bevelThickness: .006, bevelSize: .008, bevelSegments: 1 }), mat(0xdfe6ee, { metalness: .95, roughness: .2 }), 0, 0, 0); g.add(blade);
+    g.add(mesh(box(.04, .16, .06), mat(0xc9a14a, { metalness: .9, roughness: .3 }), -.02, 0, .005));
+    const grip = mesh(new THREE.CylinderGeometry(.025, .025, .28, 8), mat(0x3d2414), -.17, -.02, .005); grip.rotation.z = PI / 2 - .12; g.add(grip);
+    g.add(mesh(new THREE.SphereGeometry(.035, 10, 8), mat(0xc9a14a, { metalness: .9, roughness: .3 }), -.32, -.04, .005));
+    g.rotation.z = .5; g.position.set(-.35, .45, 0); const w = new THREE.Group(); w.add(g); return w;
+  },
+  arrows() {
+    const g = new THREE.Group(); const m = mat(0x5a4a3c, { metalness: .6, roughness: .6 });
+    for (let i = 0; i < 3; i++) { const a = new THREE.Group(); const hd = mesh(new THREE.ConeGeometry(.06, .22, 4), m, 0, .11, 0); hd.scale.z = .35; a.add(hd); a.add(mesh(new THREE.CylinderGeometry(.012, .012, .14, 6), m, 0, -.07, 0)); a.rotation.z = (i - 1) * .45; a.position.set((i - 1) * .2, .5, 0); g.add(a); }
+    g.add(mesh(box(.8, .05, .35), mat(0x3a2c22), 0, .3, 0)); return g;
+  },
+  tamga() {
+    const t = new THREE.MeshStandardMaterial({ map: texCarved('tamga'), roughness: .95 }); const m = mat(0xffffff, { map: texLime('#d2c5a5', false, 41, .7) });
+    return mesh(rockGeo(.5, .8, .2, 5, .6, .06), [m, m, m, m, t, m], 0, .4, 0);
+  },
+  ram() { const herr = texHerring(); const g = ramStone(mat(0xffffff, { map: texLime('#d8cfb4', false, 42, .8) }), mat(0xffffff, { map: herr }), 0, 0, 0, .55); return g; },
+  kobyz() {
+    const g = new THREE.Group(); const wood = mat(0x7a4a26, { roughness: .55 });
+    const body = mesh(new THREE.SphereGeometry(.22, 20, 14, 0, TAU, 0, PI / 2), wood, 0, .3, 0); body.scale.set(1, 1.5, .8); body.rotation.x = PI; g.add(body);
+    g.add(mesh(new THREE.CircleGeometry(.22, 20), mat(0xe9dcc0, { side: THREE.DoubleSide }), 0, .3, 0)).children;
+    const skin = g.children[1]; skin.rotation.x = -PI / 2; skin.scale.set(1, .8, 1);
+    g.add(mesh(box(.07, .55, .06), wood, 0, .58, -.05));
+    const hd = mesh(new THREE.TorusGeometry(.1, .03, 8, 16, PI * 1.3), wood, -.05, .92, -.05); hd.rotation.z = PI * .2; g.add(hd);
+    for (const x of [-.02, .02]) g.add(mesh(new THREE.CylinderGeometry(.004, .004, .7, 4), basic(0xf5ebd8), x, .55, .02, false, false));
+    const bow = new THREE.Mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(V3(.25, .2, .12), V3(.45, .55, .12), V3(.3, .95, .12)), 20, .012, 5), wood); g.add(bow);
+    g.rotation.x = -.25; g.position.y = .1; const w = new THREE.Group(); w.add(g); return w;
+  },
+  yurt() {
+    const g = new THREE.Group(); const lat = texLattice(); lat.repeat.set(3, 1);
+    g.add(mesh(new THREE.CylinderGeometry(.42, .42, .3, 24, 1, true), mat(0xffffff, { map: lat, side: THREE.DoubleSide }), 0, .45, 0));
+    const roof = mesh(new THREE.SphereGeometry(.44, 24, 8, 0, TAU, 0, PI * .36), mat(0xffffff, { map: texFelt(), side: THREE.DoubleSide }), 0, .5, 0); roof.scale.y = .7; g.add(roof);
+    g.add(mesh(new THREE.TorusGeometry(.09, .015, 6, 20), mat(0x9b6a3c), 0, .78, 0)).children; g.children[2].rotation.x = PI / 2;
+    g.add(mesh(box(.14, .2, .02), mat(0x8b2a1f), 0, .4, .42));
+    return g;
+  }
+};
+
+function buildMuseum(slide) {
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0b090e); scene.fog = new THREE.Fog(0x0b090e, 18, 40);
+  scene.add(new THREE.HemisphereLight(0x8a7a9a, 0x2a1e10, 1.1));
+  const R0 = 16, H = 7;
+  const marble = texMarble(); marble.repeat.set(4, 4);
+  const floor = mesh(new THREE.CircleGeometry(R0, 64), mat(0xffffff, { map: marble, roughness: .25, metalness: .3 }), 0, 0, 0, false, true); floor.rotation.x = -PI / 2; floor.userData.ground = true; scene.add(floor);
+  // golden inlay rings on floor
+  for (const r of [3.2, 6.6, 11.4]) { const ring = mesh(new THREE.RingGeometry(r, r + .06, 96), basic(0xb8862f, { side: THREE.DoubleSide }), 0, .005, 0, false, false); ring.rotation.x = -PI / 2; scene.add(ring); }
+  // walls with ornament band
+  const wallTex = canvasTex(2048, 512, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#120e14'); gr.addColorStop(1, '#2a1f1c'); g.fillStyle = gr; g.fillRect(0, 0, w, h); drawOrnament(g, 0, h * .12, w, h * .14, '#b8862f', 4); drawOrnament(g, 0, h * .72, w, h * .1, '#7a5a26', 3); speckle(g, w, h, 8, 7); }, 1);
+  wallTex.repeat.set(4, 1);
+  scene.add(mesh(new THREE.CylinderGeometry(R0, R0, H, 64, 1, true), mat(0xffffff, { map: wallTex, side: THREE.BackSide, roughness: .9 }), 0, H / 2, 0, false, true));
+  const ceil = mesh(new THREE.CircleGeometry(R0, 64), mat(0x0d0a10, { side: THREE.DoubleSide }), 0, H, 0, false, false); ceil.rotation.x = PI / 2; scene.add(ceil);
+  // central shanyrak emblem
+  const sh = new THREE.Group(); sh.position.set(0, 2.2, 0); scene.add(sh);
+  const gold = mat(0xe8c374, { metalness: 1, roughness: .25, emissive: 0x3a2508 });
+  sh.add(mesh(new THREE.TorusGeometry(1.1, .08, 12, 64), gold));
+  for (let k = 0; k < 3; k++) { const b = mesh(new THREE.CylinderGeometry(.04, .04, 2.2, 8), gold); b.rotation.z = PI / 2; b.rotation.y = k * PI / 3; sh.add(b); }
+  for (let k = 0; k < 3; k++) { const b = mesh(new THREE.TorusGeometry(.75, .035, 8, 40, PI), gold); b.rotation.y = k * PI / 3 + PI / 6; sh.add(b); }
+  scene.add(mesh(new THREE.CylinderGeometry(1.3, 1.5, .5, 48), mat(0x1c1418, { roughness: .4, metalness: .3 }), 0, .25, 0));
+  for (let k = 0; k < 8; k++) { const wl = new THREE.PointLight(0xffc878, 6, 9); wl.position.set(Math.cos(k / 8 * TAU) * 14, 5.5, Math.sin(k / 8 * TAU) * 14); scene.add(wl); }
+  const cl = new THREE.PointLight(0xffd690, 18, 9); cl.position.set(0, 5, 0); scene.add(cl);
+  const t0 = label('ОҒЫЗ МҰРАСЫ', 'zone'); t0.position.set(0, 4.0, 0); scene.add(t0);
+
+  const items = []; const clickables = [];
+  C.museum.forEach((it, i) => {
+    const a = i / C.museum.length * TAU + PI / 2; const r = 8.5; const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = -a - PI / 2; scene.add(g);
+    g.add(mesh(new THREE.CylinderGeometry(.75, .85, 1.1, 32), mat(0x1e171c, { roughness: .35, metalness: .25 }), 0, .55, 0));
+    const rr = mesh(new THREE.TorusGeometry(.76, .025, 8, 48), gold, 0, 1.08, 0); rr.rotation.x = PI / 2; g.add(rr);
+    const glass = mesh(new THREE.BoxGeometry(1.4, 1.6, 1.4), new THREE.MeshStandardMaterial({ color: 0xbfe6ff, transparent: true, opacity: .07, roughness: .05, metalness: .1, depthWrite: false }), 0, 1.9, 0, false, false); g.add(glass);
+    g.add(new THREE.LineSegments(new THREE.EdgesGeometry(glass.geometry), new THREE.LineBasicMaterial({ color: 0xb8862f, transparent: true, opacity: .55 }))).children; g.children[g.children.length - 1].position.y = 1.9;
+    const art = ARTIFACTS[it.id](); art.position.y = 1.1; g.add(art);
+    const spot = new THREE.SpotLight(0xffe2b0, 30, 7, .45, .5, 1.6); spot.position.set(0, 5.5, .8); spot.target = art; g.add(spot);
+    const lab = label(`${i + 1}. ${it.title}`, 'zone', () => focus(i)); lab.element.style.cssText += ';pointer-events:auto;cursor:pointer;font-size:13px'; lab.position.set(0, 2.95, 0); g.add(lab);
+    const hit = mesh(new THREE.CylinderGeometry(.8, .8, 3, 12), new THREE.MeshBasicMaterial({ visible: false }), 0, 1.5, 0, false, false); g.add(hit); hit.userData.onClick = () => focus(i); clickables.push(hit);
+    items.push({ g, art, it, spin: 0 });
+  });
+  let focused = -1;
+  function focus(i) {
+    focused = i; const { g, it } = items[i]; const wp = new THREE.Vector3(); items[i].art.getWorldPosition(wp); wp.y += .35;
+    const dir = wp.clone().setY(0).normalize();
+    flyTo(wp.clone().sub(dir.multiplyScalar(2.6)).setY(1.95), wp, 1.4);
+    UI.showCard({ title: it.title, text: it.text, audio: 'mus_' + it.id }, true);
+  }
+  return {
+    name: 'museum', scene, clickables,
+    view: { pos: V3(Math.cos(PI / 2 + PI / 10) * 13, 4.2, Math.sin(PI / 2 + PI / 10) * 13), target: V3(0, 1.6, 0) },
+    limits: { min: .6, max: 14, maxPolar: 1.5 },
+    focus,
+    unfocus() { focused = -1; },
+    update(dt, t) {
+      sh.rotation.y = t * .25; sh.position.y = 2.2 + Math.sin(t) * .08;
+      items.forEach((o, i) => { o.art.rotation.y += dt * (i === focused ? .6 : .25); if (o.art.userData.flame) o.art.userData.flame.scale.y = 1.6 + Math.sin(t * 13) * .3; });
+    }
+  };
+}
+
+// ============================================================================
+//  WORLD MANAGER · CAMERA FLIGHTS · UI
+// ============================================================================
+let world = null; let mapWorld = null; let siteWorld = null; let museumWorld = null;
+const fly = { active: false };
+const SNAP = /snap/.test(location.hash);
+function flyTo(pos, target, dur = 2.2, arc = 0) {
+  if (SNAP) dur = .001;
+  Object.assign(fly, { active: true, t: 0, dur, arc, from: camera.position.clone(), fromT: controls.target.clone(), to: pos.clone(), toT: target.clone() });
+}
+function setLimits(l) { controls.minDistance = l.min; controls.maxDistance = l.max; controls.maxPolarAngle = l.maxPolar; }
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+async function setWorld(w, instant = false) {
+  if (world === w) return;
+  if (!instant && !SNAP) { $('#fade').classList.add('on'); await sleep(560); }
+  if (world) { world.scene.traverse(o => { if (o.isCSS2DObject) o.element.style.display = 'none'; }); }
+  if (world && world.name === 'site' && w !== world) disposeWorld(world);
+  world = w; setLimits(w.limits); controls.autoRotate = UI.autoRotate && w.name !== 'map';
+  camera.position.copy(w.view.pos).add(new THREE.Vector3(0, w.name === 'map' ? 40 : 10, w.name === 'map' ? 30 : 14)); controls.target.copy(w.view.target);
+  flyTo(w.view.pos, w.view.target, 2.0);
+  $('#fade').classList.remove('on');
+}
+function disposeWorld(w) {
+  w.scene.traverse(o => {
+    if (o.isCSS2DObject) o.element.remove();
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
+  });
+  if (siteWorld === w) siteWorld = null;
+}
+
+// raycasting & clicks ----------------------------------------------------------------
+const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
+let downXY = null;
+function pickAt(cx, cy, list) { ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera); return ray.intersectObjects(list, false)[0]; }
+canvas.addEventListener('pointerdown', e => { downXY = [e.clientX, e.clientY]; });
+canvas.addEventListener('pointerup', e => {
+  if (!downXY || Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]) > 6) return;
+  simulateClick(e.clientX, e.clientY);
+});
+function simulateClick(x, y) {
+  // HTML elements first (labels / hotspots) – used by hand control
+  const el = document.elementFromPoint(x, y);
+  if (el && el !== canvas && el.closest('.hs,.mlabel,.zone,button,#panel,#card')) { el.click(); return; }
+  if (!world) return;
+  const hit = pickAt(x, y, world.clickables); if (hit && hit.object.userData.onClick) { hit.object.userData.onClick(); return; }
+}
+canvas.addEventListener('pointermove', e => {
+  if (!world || e.buttons) return; const hit = pickAt(e.clientX, e.clientY, world.clickables);
+  canvas.style.cursor = hit ? 'pointer' : 'grab';
+});
+canvas.addEventListener('dblclick', e => { // fly to a point on the ground
+  if (!world) return; const grounds = []; world.scene.traverse(o => { if (o.userData.ground) grounds.push(o); });
+  const hit = pickAt(e.clientX, e.clientY, grounds.concat(world.scene.children.filter(o => o.isMesh || o.isGroup)));
+  ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
+  const h2 = ray.intersectObjects(world.scene.children, true).find(i => i.object.isMesh && i.object.material && i.object.material.visible !== false && !i.object.material.transparent);
+  const p = (h2 || hit) && (h2 || hit).point; if (!p) return;
+  const off = camera.position.clone().sub(controls.target).multiplyScalar(.55);
+  flyTo(p.clone().add(off), p, 1.2);
+});
+
+// ----------------------------------------------------------------------------
+const UI = {
+  cur: 0, voiceOn: true, autoRotate: false, inSite: false, hsActive: null,
+  slides: C.slides,
+  init() {
+    const chips = $('#chips');
+    C.slides.forEach((s, i) => {
+      const b = document.createElement('button');
+      b.innerHTML = s.kind === 'intro' ? '<i>★</i>Кіріспе' : s.kind === 'map' ? '<i>🗺</i>Карта' : s.kind === 'museum' ? '<i>🏺</i>Музей' : s.kind === 'outro' ? '<i>✦</i>Қорытынды' : `<i>${s.num}</i>${shortName(s).split(' · ')[0]}`;
+      b.onclick = () => UI.go(i); chips.appendChild(b);
+    });
+    $('#prev').onclick = () => UI.go(UI.cur - 1); $('#next').onclick = () => UI.go(UI.cur + 1);
+    $('#panelHead').onclick = () => $('#panel').classList.toggle('collapsed');
+    $('#cardX').onclick = () => UI.hideCard();
+    $('#galX').onclick = () => $('#gallery').classList.remove('show');
+    $('#lightbox').onclick = () => $('#lightbox').classList.remove('show');
+    $('#tHelp').onclick = () => $('#help').classList.add('show'); $('#helpX').onclick = () => $('#help').classList.remove('show');
+    $('#tFull').onclick = () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); };
+    $('#tReset').onclick = () => world && flyTo(world.view.pos, world.view.target, 1.6);
+    $('#tRotate').onclick = () => { UI.autoRotate = !UI.autoRotate; controls.autoRotate = UI.autoRotate; $('#tRotate').classList.toggle('on', UI.autoRotate); };
+    $('#tVoice').onclick = () => { UI.voiceOn = !UI.voiceOn; $('#tVoice').classList.toggle('on', UI.voiceOn); $('#tVoice').textContent = UI.voiceOn ? '🔊' : '🔇'; if (!UI.voiceOn) Narrator.stop(); };
+    $('#tMusic').onclick = () => { Music.toggle(); $('#tMusic').classList.toggle('on', Music.on); };
+    $('#tHand').onclick = () => Hands.toggle();
+    $('#speakStop').onclick = () => Narrator.stop();
+    addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT') return;
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') UI.go(UI.cur + 1);
+      else if (e.key === 'ArrowLeft' || e.key === 'PageUp') UI.go(UI.cur - 1);
+      else if (e.key === 'Escape') { UI.hideCard(); $('#gallery').classList.remove('show'); $('#lightbox').classList.remove('show'); $('#help').classList.remove('show'); }
+      else if (e.key.toLowerCase() === 'm' || e.key === 'ь') $('#tMusic').click();
+      else if (e.key.toLowerCase() === 'v' || e.key === 'м') $('#tVoice').click();
+    });
+    $('#tVoice').classList.add('on');
+  },
+  toast(msg, ms = 2600) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(UI._tt); UI._tt = setTimeout(() => t.classList.remove('show'), ms); },
+
+  async go(i, opts = {}) {
+    if (i < 0 || i >= C.slides.length) return;
+    UI.cur = i; const s = C.slides[i]; UI.hideCard(); Narrator.stop();
+    document.querySelectorAll('#chips button').forEach((b, k) => b.classList.toggle('active', k === i));
+    const ab = document.querySelectorAll('#chips button')[i]; ab.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    $('#prev').disabled = i === 0; $('#next').disabled = i === C.slides.length - 1;
+    $('#progress').style.width = (i / (C.slides.length - 1) * 100) + '%';
+    UI.inSite = false; UI.renderSiteBar(null);
+    if (s.kind === 'museum') {
+      if (!museumWorld) museumWorld = buildMuseum(s);
+      await setWorld(museumWorld);
+    } else {
+      await setWorld(mapWorld);
+      mapWorld.setActive(s.kind === 'site' ? s.id : null);
+      if (s.kind === 'site') { const m = mapWorld.markers[s.id]; const p = m.pos; flyTo(p.clone().add(new THREE.Vector3(2.5, 11, 12)), p.clone().add(new THREE.Vector3(0, .8, 0)), 2.6); }
+      else if (s.kind === 'intro') flyTo(new THREE.Vector3(-10, 34, 40), new THREE.Vector3(-6, 0, 2), 3.5);
+      else flyTo(mapWorld.view.pos, mapWorld.view.target, 2.4);
+    }
+    UI.renderPanel(s);
+    if (UI.voiceOn && !opts.silent) Narrator.play('slide_' + s.id, s.narration);
+  },
+  siteClick(idx) { if (UI.cur === idx && !UI.inSite) UI.enterSite(); else UI.go(idx); },
+
+  async enterSite() {
+    const s = C.slides[UI.cur]; if (s.kind !== 'site') return;
+    $('#fade').classList.add('on'); await sleep(400);
+    const w = s.type === 'necropolis' ? (s.model === 'kenti' ? buildKenti(s) : buildBeyneu(s)) : buildCity(s);
+    siteWorld = w; await setWorld(w, true); UI.inSite = true;
+    $('#panel').classList.add('collapsed'); UI.renderSiteBar(s); UI.renderPanel(s);
+    UI.toast(s.type === 'necropolis' ? 'Алтын «i» белгілерін басып, ескерткіштермен танысыңыз' : 'Алтын «i» белгілерін басыңыз · «Қазіргі күйі» батырмасы – бүгінгі қирандылар');
+  },
+  async exitSite() { const i = UI.cur; await UI.go(i, { silent: true }); },
+
+  renderPanel(s) {
+    const p = $('#panel'); p.classList.remove('hidden');
+    const num = $('#pNum'); num.className = 'num' + (s.type === 'necropolis' ? ' teal' : '');
+    num.textContent = s.kind === 'site' ? s.num : s.kind === 'intro' ? '★' : s.kind === 'map' ? '🗺' : s.kind === 'museum' ? '🏺' : '✦';
+    $('#pTitle').textContent = s.title; $('#pSub').textContent = s.sub || '';
+    let h = '';
+    if (s.kind === 'intro') h += `<div class="authors"><span>Тақырып:</span><b>${C.project.title}</b><span>Жоба авторы:</span><b>${C.project.author}</b><span>Жетекшісі:</span><b>${C.project.supervisor}</b></div>`;
+    h += s.text.map(t => `<p>${t}</p>`).join('');
+    if (s.facts && s.facts.length) h += `<ul class="facts">${s.facts.map(f => `<li>✦ ${f}</li>`).join('')}</ul>`;
+    if (s.sources) h += `<p><b>Дереккөздер:</b></p><ol class="src">${s.sources.map(x => `<li>${x}</li>`).join('')}</ol>`;
+    h += '<div class="acts">';
+    if (s.kind === 'site') h += UI.inSite ? `<button class="btn primary" data-a="exit">🗺 Картаға оралу</button>` : `<button class="btn primary" data-a="enter">${s.type === 'necropolis' ? '🏛 Қорымға кіру (3D)' : '🏛 Қалаға кіру (3D)'}</button>`;
+    if (s.kind === 'site') h += `<button class="btn" data-a="photos">📷 Фотолар</button>`;
+    if (s.kind === 'intro') h += `<button class="btn primary" data-a="next">Картаға өту ›</button>`;
+    if (s.kind === 'map') h += `<button class="btn primary" data-a="next">1-нысаннан бастау ›</button>`;
+    if (s.kind === 'museum') h += C.museum.map((m, k) => `<button class="btn" data-a="mus" data-k="${k}">${m.title}</button>`).join('');
+    if (s.kind === 'outro') h += `<button class="btn primary" data-a="restart">↺ Басынан</button>`;
+    h += `<button class="btn" data-a="listen">🔊 Тыңдау</button></div>`;
+    const body = $('#pBody'); body.innerHTML = h; body.scrollTop = 0;
+    body.querySelectorAll('[data-a]').forEach(b => b.onclick = (e) => {
+      e.stopPropagation(); const a = b.dataset.a;
+      if (a === 'enter') UI.enterSite(); else if (a === 'exit') UI.exitSite(); else if (a === 'photos') UI.openGallery(s);
+      else if (a === 'next') UI.go(UI.cur + 1); else if (a === 'restart') UI.go(0);
+      else if (a === 'mus') museumWorld.focus(+b.dataset.k);
+      else if (a === 'listen') Narrator.play('slide_' + s.id, s.narration, true);
+    });
+  },
+  renderSiteBar(s) {
+    const bar = $('#siteBar'); if (!s) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+    bar.classList.remove('hidden');
+    let h = `<button class="btn" data-a="exit">🗺 Картаға</button>`;
+    if (siteWorld && siteWorld.hasRuin) h += `<button class="btn" data-a="ruin">🏜 Қазіргі күйі</button>`;
+    if (siteWorld && siteWorld.inside) h += `<button class="btn" data-a="inside">🚶 Кесене ішіне кіру</button>`;
+    h += `<button class="btn" data-a="tour">🎥 Нысан бойынша тур</button><button class="btn" data-a="photos">📷 Фотолар</button>`;
+    bar.innerHTML = h;
+    bar.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
+      const a = b.dataset.a;
+      if (a === 'exit') UI.exitSite();
+      else if (a === 'ruin') { const on = !b.classList.contains('on'); b.classList.toggle('on', on); b.textContent = on ? '🏛 Қайта құру (реконструкция)' : '🏜 Қазіргі күйі'; siteWorld.toggleRuin(on); UI.toast(on ? 'Қазіргі күйі: археологиялық төбе мен қазба орындары' : 'Қалпына келтірілген көрінісі (реконструкция)'); }
+      else if (a === 'inside') { const c = siteWorld.inside; flyTo(c.pos, c.target, 2.2); }
+      else if (a === 'tour') UI.tour();
+      else if (a === 'photos') UI.openGallery(s);
+    });
+  },
+  async tour() { // visit each hotspot in turn
+    if (!siteWorld) return; const w = siteWorld; UI._tourId = (UI._tourId || 0) + 1; const id = UI._tourId;
+    for (const h of w.hotspots) {
+      if (UI._tourId !== id || siteWorld !== w) return; if (!h.obj.visible) continue;
+      UI.openHotspot(h.data, h.obj);
+      await new Promise(r => { const start = performance.now(); const tick = () => { if (UI._tourId !== id) return r(); if (!Narrator.speaking && performance.now() - start > 3500) return r(); setTimeout(tick, 400); }; setTimeout(tick, 2500); });
+    }
+  },
+  openHotspot(d, obj) {
+    obj && obj.element.classList.add('seen'); UI.hsActive = d.key;
+    if (world && world.name === 'site') {
+      const dist = world.hsDist || 12; const dir = camera.position.clone().sub(d.pos); dir.y = Math.max(dir.y, dir.length() * .35); dir.normalize();
+      flyTo(d.pos.clone().add(dir.multiplyScalar(dist)), d.pos.clone().add(new THREE.Vector3(0, -dist * .08, 0)), 1.6);
+    }
+    UI.showCard(d);
+  },
+  showCard(d, museum = false) {
+    $('#cardTitle').textContent = d.title; $('#cardText').textContent = d.text;
+    $('#cardImg').innerHTML = d.photo ? `<img src="${d.photo}" alt="${d.title}">` : '';
+    $('#cardExtra').innerHTML = '';
+    if (d.key === 'tamga' || (museum && d.audio === 'mus_tamga')) { const c = document.createElement('canvas'); c.width = 220; c.height = 120; c.className = 'tamga'; const g = c.getContext('2d'); drawTamga(g, 110, 60, 80, '#e8c374', 7); $('#cardExtra').appendChild(c); }
+    const img = $('#cardImg img'); if (img) img.onclick = () => UI.lightbox(d.photo, d.title);
+    $('#cardActs').innerHTML = `<button class="btn" id="cListen">🔊 Тыңдау</button>` + (d.photo ? `<button class="btn" id="cZoom">🔍 Фотоны үлкейту</button>` : '');
+    $('#cListen').onclick = () => Narrator.play(d.audio, d.title + '. ' + d.text, true);
+    if (d.photo) $('#cZoom').onclick = () => UI.lightbox(d.photo, d.title);
+    $('#card').classList.add('show');
+    if (UI.voiceOn) Narrator.play(d.audio, d.title + '. ' + d.text);
+  },
+  hideCard() { $('#card').classList.remove('show'); UI.hsActive = null; if (museumWorld) museumWorld.unfocus(); },
+  lightbox(src, cap) { const lb = $('#lightbox'); lb.querySelector('img').src = src; lb.querySelector('div').textContent = cap || ''; lb.classList.add('show'); },
+
+  async openGallery(s) {
+    $('#galTitle').textContent = '📷 ' + s.title; const grid = $('#galGrid'); grid.innerHTML = ''; $('#gallery').classList.add('show');
+    const local = Object.values(s.hotspots || {}).filter(h => h.photo);
+    const add = (src, cap, full, link) => { const f = document.createElement('figure'); f.innerHTML = `<img loading="lazy" src="${src}" alt=""><figcaption>${cap}${link ? ` · <a href="${link}" target="_blank" rel="noopener">Wikimedia Commons</a>` : ''}</figcaption>`; f.querySelector('img').onclick = () => UI.lightbox(full || src, cap); grid.appendChild(f); };
+    local.forEach(h => add(h.photo, h.title + ' (жоба фотосы)'));
+    $('#galNote').textContent = local.length ? 'Жоба авторы ұсынған далалық фотолар' : '';
+    if (s.commons && s.commons.length) {
+      $('#galNote').textContent += (local.length ? ' · ' : '') + 'Wikimedia Commons-тан жүктелуде…';
+      try {
+        const seen = new Set(); let n = 0;
+        for (const q of s.commons) {
+          const url = `https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=6&gsrlimit=24&gsrsearch=${encodeURIComponent(q.q + ' filetype:bitmap')}&prop=imageinfo&iiprop=url&iiurlwidth=900`;
+          const j = await (await fetch(url)).json(); const pages = Object.values((j.query || {}).pages || {}).sort((a, b) => a.index - b.index);
+          for (const p of pages) {
+            const t = p.title.toLowerCase(); if (!q.kw.some(k => t.includes(k))) continue; const ii = (p.imageinfo || [])[0]; if (!ii || seen.has(ii.url)) continue; seen.add(ii.url);
+            add(ii.thumburl, p.title.replace(/^File:/, '').replace(/\.(jpe?g|png|tiff?)$/i, '').replace(/_/g, ' '), ii.thumburl, ii.descriptionurl); n++;
+          }
+        }
+        $('#galNote').textContent = (local.length ? 'Жоба фотолары · ' : '') + (n ? `Интернеттен ${n} фото (Wikimedia Commons, ашық лицензия)` : 'Интернеттен сәйкес фото табылмады');
+      } catch (e) { $('#galNote').textContent = 'Интернет байланысы жоқ – тек жоба фотолары көрсетілді'; }
+    } else if (!local.length) {
+      grid.innerHTML = `<p class="note">Бұл нысанның ашық лицензиялы фотосы табылмады. Нысан туралы ғылыми деректер негізінде жасалған 3D реконструкцияны қараңыз.</p>`;
+    }
+  }
+};
+
+// ============================================================================
+//  AUDIO: generative kobyz-like melody + steppe wind, and Kazakh narration
+// ============================================================================
+const Music = {
+  on: false, ctx: null,
+  init() {
+    if (this.ctx) return; const ctx = this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.master = ctx.createGain(); this.master.gain.value = 0; this.master.connect(ctx.destination);
+    this.duckG = ctx.createGain(); this.duckG.gain.value = 1; this.duckG.connect(this.master);
+    // reverb
+    const len = ctx.sampleRate * 3.2, ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+    this.rev = ctx.createConvolver(); this.rev.buffer = ir; const rg = ctx.createGain(); rg.gain.value = .55; this.rev.connect(rg); rg.connect(this.duckG);
+    this.dry = ctx.createGain(); this.dry.gain.value = .7; this.dry.connect(this.duckG);
+    // drone (D2 + A2) – like the low open string of a kobyz
+    const dg = ctx.createGain(); dg.gain.value = .045; const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 520; lp.Q.value = 2;
+    dg.connect(lp); lp.connect(this.dry); lp.connect(this.rev);
+    for (const [f, det] of [[73.42, 0], [73.42, 6], [110, -4], [146.83, 3]]) { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = det; o.connect(dg); o.start(); }
+    const lfo = ctx.createOscillator(); lfo.frequency.value = .07; const lg = ctx.createGain(); lg.gain.value = .022; lfo.connect(lg); lg.connect(dg.gain); lfo.start();
+    const lfo2 = ctx.createOscillator(); lfo2.frequency.value = .05; const lg2 = ctx.createGain(); lg2.gain.value = 180; lfo2.connect(lg2); lg2.connect(lp.frequency); lfo2.start();
+    // wind
+    const nb = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate); const nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    const ns = ctx.createBufferSource(); ns.buffer = nb; ns.loop = true; const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 500; bp.Q.value = .8;
+    const wg = ctx.createGain(); wg.gain.value = .035; ns.connect(bp); bp.connect(wg); wg.connect(this.duckG); ns.start();
+    const wl = ctx.createOscillator(); wl.frequency.value = .09; const wlg = ctx.createGain(); wlg.gain.value = 300; wl.connect(wlg); wlg.connect(bp.frequency); wl.start();
+    const wl2 = ctx.createOscillator(); wl2.frequency.value = .13; const wlg2 = ctx.createGain(); wlg2.gain.value = .025; wl2.connect(wlg2); wlg2.connect(wg.gain); wl2.start();
+    // melody voice chain (formants of a horsehair bowed string)
+    this.voiceIn = ctx.createGain(); this.voiceIn.gain.value = 1;
+    const f1 = ctx.createBiquadFilter(); f1.type = 'peaking'; f1.frequency.value = 850; f1.Q.value = 2.2; f1.gain.value = 9;
+    const f2 = ctx.createBiquadFilter(); f2.type = 'peaking'; f2.frequency.value = 2300; f2.Q.value = 3; f2.gain.value = 6;
+    const f3 = ctx.createBiquadFilter(); f3.type = 'lowpass'; f3.frequency.value = 3600;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 160;
+    this.voiceIn.connect(hp); hp.connect(f1); f1.connect(f2); f2.connect(f3); f3.connect(this.dry); f3.connect(this.rev);
+    this.prevF = 293.66; this.nextT = ctx.currentTime + 1.5;
+    this.timer = setInterval(() => this.schedule(), 200);
+  },
+  // D dorian-ish scale (Kazakh küi flavour)
+  scale: [146.83, 164.81, 174.61, 196.0, 220.0, 246.94, 261.63, 293.66, 329.63, 349.23, 392.0, 440.0],
+  deg: 7,
+  schedule() {
+    const ctx = this.ctx; if (!this.on) return;
+    while (this.nextT < ctx.currentTime + 1.2) {
+      // phrase logic: random walk, cadence to D / A
+      const r = Math.random(); let step = r < .35 ? -1 : r < .7 ? 1 : r < .8 ? -2 : r < .9 ? 2 : 0;
+      this.deg = clamp(this.deg + step, 2, 11);
+      if (Math.random() < .12) this.deg = pick([4, 7, 7, 11]);
+      const long = Math.random() < .3; const dur = long ? R(2.2, 3.6) : R(.5, 1.3);
+      if (Math.random() < .25) this.note(this.scale[Math.min(11, this.deg + 1)], .14, this.nextT, .5); // grace note
+      this.note(this.scale[this.deg], dur, this.nextT + (Math.random() < .25 ? .14 : 0), long ? .9 : .7);
+      this.nextT += dur + (Math.random() < .15 ? R(1, 2.5) : 0);
+    }
+  },
+  note(f, dur, t, vel = .8) {
+    const ctx = this.ctx; const g = ctx.createGain(); g.gain.value = 0; g.connect(this.voiceIn);
+    const os = [ctx.createOscillator(), ctx.createOscillator()]; os[0].type = 'sawtooth'; os[1].type = 'sawtooth'; os[1].detune.value = 9;
+    const vib = ctx.createOscillator(); vib.frequency.value = R(4.8, 6.2); const vg = ctx.createGain(); vg.gain.setValueAtTime(0, t); vg.gain.linearRampToValueAtTime(f * .012, t + Math.min(dur, 1.2)); vib.connect(vg);
+    for (const o of os) { o.frequency.setValueAtTime(this.prevF, t); o.frequency.exponentialRampToValueAtTime(f, t + .12); vg.connect(o.frequency); o.connect(g); o.start(t); o.stop(t + dur + 1); }
+    vib.start(t); vib.stop(t + dur + 1);
+    const a = .07 * vel; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(a, t + .22); g.gain.linearRampToValueAtTime(a * .8, t + dur * .6); g.gain.linearRampToValueAtTime(0, t + dur + .5);
+    this.prevF = f;
+  },
+  start() { this.init(); this.ctx.resume(); this.on = true; this.master.gain.cancelScheduledValues(this.ctx.currentTime); this.master.gain.linearRampToValueAtTime(.8, this.ctx.currentTime + 3); this.nextT = Math.max(this.nextT, this.ctx.currentTime + .5); },
+  stop() { if (!this.ctx) return; this.on = false; this.master.gain.cancelScheduledValues(this.ctx.currentTime); this.master.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 1.2); },
+  toggle() { this.on ? this.stop() : this.start(); },
+  duck(v) { if (!this.ctx) return; this.duckG.gain.cancelScheduledValues(this.ctx.currentTime); this.duckG.gain.linearRampToValueAtTime(v, this.ctx.currentTime + .6); }
+};
+
+const Narrator = {
+  audio: new Audio(), speaking: false, keys: new Set(C.audio || []),
+  play(key, text, force = false) {
+    if (!UI.voiceOn && !force) return;
+    this.stop();
+    if (this.keys.has(key)) {
+      this.audio.src = 'audio/' + key + '.mp3'; this.audio.play().then(() => this._start()).catch(() => this.speak(text));
+      this.audio.onended = () => this._end();
+    } else this.speak(text);
+  },
+  speak(text) {
+    if (!('speechSynthesis' in window)) return;
+    const u = new SpeechSynthesisUtterance(text); const vs = speechSynthesis.getVoices();
+    const v = vs.find(v => /^kk/i.test(v.lang)) || vs.find(v => /^tr|^ru/i.test(v.lang)); if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'kk-KZ';
+    u.rate = .95; u.onstart = () => this._start(); u.onend = () => this._end(); speechSynthesis.speak(u);
+  },
+  _start() { this.speaking = true; $('#speak').classList.add('show'); Music.duck(.28); },
+  _end() { this.speaking = false; $('#speak').classList.remove('show'); Music.duck(1); },
+  stop() { this.audio.pause(); this.audio.onended = null; if ('speechSynthesis' in window) speechSynthesis.cancel(); this._end(); }
+};
+
+// ============================================================================
+//  HAND CONTROL (webcam + MediaPipe Hand Landmarker)
+//  open palm moves -> orbit camera · quick pinch -> click · hold pinch + up/down -> zoom
+// ============================================================================
+const Hands = {
+  on: false, lm: null, video: null, last: null, pinch: false, pinchStart: 0, pinchY: 0, moved: 0,
+  async toggle() { this.on ? this.stop() : this.start(); },
+  async start() {
+    UI.toast('🖐 Камера мен қол модельі жүктелуде…', 4000);
+    try {
+      if (!this.lm) {
+        const v = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+        const fs = await v.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+        this.lm = await v.HandLandmarker.createFromOptions(fs, { baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate: 'GPU' }, runningMode: 'VIDEO', numHands: 1 });
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
+      this.video = $('#hand video'); this.video.srcObject = stream; await this.video.play();
+      this.on = true; $('#hand').classList.add('show'); $('#tHand').classList.add('on'); $('#cursor').style.display = 'block';
+      UI.toast('Алақанды жылжытыңыз – айналдыру · Сұқ саусақ пен бас бармақты қысу – басу · Қысып тұрып жоғары/төмен – үлкейту', 6000);
+      this.loop();
+    } catch (e) { console.warn(e); UI.toast('Камераға рұқсат берілмеді немесе интернет жоқ. Сайтты http://localhost арқылы ашыңыз (start.command).', 6000); }
+  },
+  stop() {
+    this.on = false; $('#hand').classList.remove('show'); $('#tHand').classList.remove('on'); $('#cursor').style.display = 'none';
+    if (this.video && this.video.srcObject) this.video.srcObject.getTracks().forEach(t => t.stop());
+  },
+  loop() {
+    if (!this.on) return; requestAnimationFrame(() => this.loop());
+    if (this.video.readyState < 2) return;
+    const res = this.lm.detectForVideo(this.video, performance.now());
+    const cv = $('#hand canvas'); cv.width = 200; cv.height = 150; const g = cv.getContext('2d'); g.clearRect(0, 0, 200, 150);
+    const lms = res.landmarks && res.landmarks[0]; const cur = $('#cursor');
+    if (!lms) { this.last = null; return; }
+    g.fillStyle = '#5fd4d0'; lms.forEach(p => { g.beginPath(); g.arc(p.x * 200, p.y * 150, 2.5, 0, TAU); g.fill(); });
+    const tip = lms[8], th = lms[4], palm = lms[9];
+    const sx = (1 - tip.x) * innerWidth, sy = tip.y * innerHeight; cur.style.left = sx + 'px'; cur.style.top = sy + 'px';
+    const pd = Math.hypot(tip.x - th.x, tip.y - th.y); const isPinch = pd < .055;
+    cur.classList.toggle('pinch', isPinch);
+    const now = performance.now();
+    if (isPinch && !this.pinch) { this.pinch = true; this.pinchStart = now; this.pinchY = palm.y; this.moved = 0; this.clickXY = [sx, sy]; }
+    else if (!isPinch && this.pinch) { this.pinch = false; if (now - this.pinchStart < 450 && this.moved < .04) simulateClick(this.clickXY[0], this.clickXY[1]); }
+    if (this.last) {
+      const dx = palm.x - this.last.x, dy = palm.y - this.last.y; this.moved += Math.hypot(dx, dy);
+      const off = camera.position.clone().sub(controls.target); const sph = new THREE.Spherical().setFromVector3(off);
+      if (this.pinch && now - this.pinchStart > 300) { sph.radius = clamp(sph.radius * (1 + dy * 3), controls.minDistance, controls.maxDistance); }
+      else if (!this.pinch && Math.hypot(dx, dy) > .004) { sph.theta += dx * 4.5; sph.phi = clamp(sph.phi - dy * 3, .1, controls.maxPolarAngle); }
+      off.setFromSpherical(sph); camera.position.copy(controls.target).add(off);
+    }
+    this.last = { x: palm.x, y: palm.y };
+  }
+};
+
+// ============================================================================
+//  BOOT + RENDER LOOP
+// ============================================================================
+$('#introTitle').textContent = C.project.title;
+$('#introLead').textContent = C.project.subtitle;
+$('#introAuthor').textContent = C.project.author;
+$('#introSup').textContent = C.project.supervisor;
+UI.init();
+
+const clock = new THREE.Clock();
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
+  if (fly.active) {
+    fly.t += dt / fly.dur; const k = ease(Math.min(1, fly.t));
+    camera.position.lerpVectors(fly.from, fly.to, k);
+    const span = fly.from.distanceTo(fly.to); camera.position.y += Math.sin(k * PI) * Math.min(span * .18, 25) * (world && world.name === 'map' ? 1 : .3);
+    controls.target.lerpVectors(fly.fromT, fly.toT, k);
+    if (fly.t >= 1) fly.active = false;
+  }
+  controls.update();
+  if (world) { world.update(dt, t); renderer.render(world.scene, camera); labelRenderer.render(world.scene, camera); }
+}
+
+// build the map while the intro is shown
+setTimeout(() => {
+  try {
+    mapWorld = buildMap(); setWorld(mapWorld, true);
+    camera.position.set(0, 150, 130); controls.target.set(0, 0, 0); controls.autoRotate = true; controls.autoRotateSpeed = .35;
+    fly.active = false;
+    frame();
+    $('#loading').textContent = 'Дайын ✓'; $('#startBtn').disabled = false;
+    // deep link for presenting / testing:  index.html#5  or  #5-in  (slide 5, enter 3D)
+    const m = location.hash.match(/^#(\d+)(-in)?(-ruin)?/);
+    if (m) { $('#intro').classList.add('gone'); controls.autoRotate = false; UI.voiceOn = false; UI.go(+m[1], { silent: true }).then(() => { if (m[2]) UI.enterSite().then(() => { if (m[3]) document.querySelector('[data-a=ruin]')?.click(); }); }); }
+  } catch (e) { console.error(e); $('#loading').textContent = 'Қате: ' + e.message + ' (WebGL қолдайтын браузер қажет)'; }
+}, 50);
+
+$('#startBtn').onclick = () => {
+  $('#intro').classList.add('gone'); controls.autoRotate = false; controls.autoRotateSpeed = .5;
+  Music.start(); $('#tMusic').classList.add('on');
+  UI.go(0);
+};
+window.__app = { UI, camera, controls, get world() { return world; } }; // debugging hook
+
+</script>
+</body>
+</html>
